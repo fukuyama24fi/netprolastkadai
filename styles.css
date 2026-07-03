@@ -103,16 +103,29 @@ body {
   width: 120px;
   height: 100px;
 
-  border: none;
-  background: #4f8cff;
-
-  clip-path: polygon(
-    50% 0%,
-    0% 100%,
-    100% 100%
-  );
+  background: transparent;
 }
 
+.shape.triangle::before ,
+.shape.triangle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+
+  pointer-events: none;
+}
+
+.shape.triangle::after {
+  background: #4f8cff;
+}
+.shape.triangle.selected::after {
+  outline: 2px solid #4d11bd;
+
+  transform: scale(1.08);
+  transform-origin: center;
+}
 
 
 .shape.triangle.selected {
