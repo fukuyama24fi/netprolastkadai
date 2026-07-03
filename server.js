@@ -43,3 +43,17 @@ const PORT = 3000;
 server.listen(PORT, () => {
     console.log('サーバーがポート ${PORT} で起動しました');
 });
+
+//デバッグ用接続確認
+io.on('connection', (socket) => {
+    console.log("クライアントが接続しました。ID:"+socket.id);
+
+    socket.on('message', (data) => {
+        consoke.log("フロントからのメッセージ:"+data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log("切断されました");
+    });
+
+});
