@@ -1,8 +1,7 @@
-const express = require('express')
-const http = require('http')
-//変数じゃなくてライブラリの機能。{}は消さないで
-const { Server } = require('socket.io')
-const cors = require('cors');
+import express from 'express';
+import { Server } from 'socket.io';
+import http from 'http';
+import cors from 'cors';
 
 const app = express();
 //corsは別のドメインからの勝手なアクセスをブロックする
