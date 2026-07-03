@@ -1,18 +1,61 @@
+*{
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family: sans-serif;
   background: #f5f5f5;
+  overflow: hidden;
 }
 
-header {
-  height: 48px;
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+
+
+.main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  overflow: auto;
+}
+
+
+#canvas {
+  position: relative;
+  width: 1300px;
+  height: 800px;
+  background: white;
+  border: 1px solid #ccc;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tool {
+ width: 160px;
+ height: 100vh;
   background: #222;
   display: flex;
-  align-items: center;
-  padding: 0 16px;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-button {
+
+.tool h1 {
+  margin: 0 0 16px;
+  color: white;
+  font-size: 20px;
+}
+
+.tool button {
+  width: 100%;
   padding: 8px 12px;
   border: none;
   border-radius: 6px;
@@ -21,18 +64,16 @@ button {
   cursor: pointer;
 }
 
-main {
-  padding: 24px;
+.tool button:hover {
+  opacity: 0.9;
 }
 
-#canvas {
-  position: relative;
-  width: 900px;
-  height: 550px;
-  background: white;
-  border: 1px solid #ccc;
-  overflow: hidden;
+.tool #delete {
+  background: #e74c3c;
+  margin-top: auto;
 }
+
+
 
 .shape {
   position: absolute;
@@ -45,9 +86,11 @@ main {
   user-select: none;
 }
 
-.shape.selected {
-  outline: 2px solid #1a73e8;
+.shape.selected:not(.triangle){
+  outline: 2px solid #4d11bd;
+  outline-offset: 2px;
 }
+
 
 
 .shape.circle {
@@ -57,14 +100,44 @@ main {
 }
 
 .shape.triangle {
-  width: 0;
-  height: 0;
-  border-left: 60px solid transparent;
-  border-right: 60px solid transparent;
-  border-bottom: 80px solid #4f8cff;
+  width: 120px;
+  height: 100px;
 
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  background: transparent;
 }
+
+.shape.triangle::before ,
+.shape.triangle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+
+  pointer-events: none;
+}
+
+.shape.triangle::after {
+  background: #4f8cff;
+}
+.shape.triangle.selected::after {
+  outline: 2px solid #4d11bd;
+
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+
+.shape.triangle.selected {
+  outline: none;
+
+  filter:
+    drop-shadow(2px 0 0 #4d11bd)
+    drop-shadow(-2px 0 0 #4d11bd)
+    drop-shadow(0 2px 0 #4d11bd)
+    drop-shadow(0 -2px 0 #4d11bd);
+}
+
 
 .delete-button {
   position: absolute;
@@ -81,3 +154,4 @@ main {
   font-size: 14px;
   cursor: pointer;
 }
+
