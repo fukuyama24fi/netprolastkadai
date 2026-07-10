@@ -1,12 +1,7 @@
 import express from 'express'; //Webサーバーを構築
 import { Server } from 'socket.io'; //リアルタイム通信を簡単にするためのライブラリ。WebSocketを使いやすくしたやつ
-import http from 'http';
+import http from 'http'; //HTTPサーバー機能（Socket.ioで必要）
 import cors from 'cors'; //corsは別のドメインからの勝手なアクセスをブロックする
-
-const express = require('express'); //Webサーバー構築用
-const http = require('http'); //HTTPサーバー機能（Socket.ioで必要）
-const { Server } = require('socket.io'); //リアルタイム通信(WebSocket)用
-const cors = require('cors'); // フロントとバックのドメイン差による拒否を防ぐ
 
 const app = express();
 app.use(cors());

@@ -1,47 +1,47 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import SocketService from './services/socketService'; // 作成したサービスをインポート
 
-function App() {
-  const [shapes, setShapes] = useState([]);
+const App = () => {
+    // 1. キャンバスの状態を管理するState
+    const [shapes, setShapes] = useState([]);
+    
+    // 2. SocketServiceのインスタンスを生成（再生成を防ぐためuseMemoを使用）
+    const socketService = useMemo(() => new SocketService(), []);
 
-  // 図形を追加する関数
-  const addShape = (type) => {
-    const newShape = {
-      id: crypto.randomUUID(),
-      type,
-      x: 50,
-      y: 50,
-      color: '#4f8cff'
-    };
-    setShapes([...shapes, newShape]);
-  };
+    useEffect(() => {
+        // 3. マウント時に接続
+        socketService.connect();
 
-  return (
-    <div>
-      <div className="toolbar">
-        <button onClick={() => addShape('rect')}>四角を追加</button>
-        <button onClick={() => addShape('circle')}>丸を追加</button>
-      </div>
-      
-      <div id="canvas" style={{ position: 'relative', width: '800px', height: '600px', border: '1px solid #ccc' }}>
-        {shapes.map((shape) => (
-          <div
-            key={shape.id}
-            style={{
-              position: 'absolute',
-              left: shape.x,
-              top: shape.y,
-              width: '100px',
-              height: '100px',
-              backgroundColor: shape.color,
-              borderRadius: shape.type === 'circle' ? '50%' : '0%'
-            }}
-          >
-            {shape.type}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+        // 4. "message" イベントのリスナーを登録
+        socketService.onMessage((data) => {
+            console.log("サーバーからデータ受信:", data);
+            
+            // 受信したアクションに応じてStateを更新
+            // 例: ADD アクションなら新しい図形を追加
+            if (data.action === "ADD") {
+                setShapes((prev) => [...prev, data.object]);
+            }
+            // 例: UPDATE アクションなら既存図形を修正など
+            else if (data.action === "UPDATE") {
+                setShapes((prev) => 
+                    prev.map(s => s.id === data.id ? { ...s, ...data.changes } : s)
+                );
+            }
+        });
+
+        // 5. アンマウント時に切断（メモリリーク防止）
+        return () => {
+            // 必要であれば SocketService に disconnect() を実装して呼び出す
+            // socketService.disconnect(); 
+        };
+    }, [socketService]);
+
+    return (
+        <div>
+            <h1>リアルタイムキャンバス</h1>
+            {/* ここで shapes をレンダリング */}
+        </div>
+    );
+};
 
 export default App;
