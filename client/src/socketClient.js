@@ -18,4 +18,10 @@ socket.on("connect_error", (err) => {
     console.error("サーバー接続エラー：", err.message);
 });
 
+//切断
+socket.on("disconnect", (reason) => {
+  console.log("サーバーとの接続が切断されました:", reason);
+});
+
+//他のファイルから利用できるようにする
 export default socket;
