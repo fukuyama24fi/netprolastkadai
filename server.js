@@ -5,21 +5,39 @@ import cors from 'cors';
 
 const app = express();
 //corsは別のドメインからの勝手なアクセスをブロックする
-//アクセスsの許可証を発行
-app.use(cors());
+//
+app.use(cors()); //JSON形式のリクエストを受け取れるようにする
+app.use(express.json());
 const server = http.createServer(app);
 
-const io = new Server(server, {
-    //originは通信のチェック
+//originは通信のチェック
     // プロトコル(http, https),ホスト名(localhost, google.comなど), ポート番号(3000,8080など)のうち一つでも違うと外部とみなされる
+    //"*"はどの場所から来たアクセスでも全部許可する。あとで更新
+const io = new Server(server, {
     cors:{
-        origin: "*", //後で更新。どの場所から来たアクセスでも全部許可する
+        origin: "*",
         methods: ["GET", "POST"]
     }
 });
 
 //キャンバスの状態を保持する変数
 let canvasState = [];
+
+//現在の状態を取得するAPI
+app.get('/canvas', (req, res) => {
+    res.json(canvasState);
+});
+
+//状態を更新するAPI
+app.post('/canvas', (req, res) => {
+    canvasState = req.body;
+    console.log("APIで状態が更新されました:", canvasState);
+    
+    //APIで更新された場合も、繋がっている全員にSocketで通知する
+    io.emit('state-changed', canvasState);
+    
+    res.status(200).json({ message: "更新成功", data: canvasState });
+});
 
 //接続時の処理
 io.on('connection', (socket) => {
@@ -48,7 +66,7 @@ io.on('connection', (socket) => {
     console.log("クライアントが接続しました。ID:"+socket.id);
 
     socket.on('message', (data) => {
-        consoke.log("フロントからのメッセージ:"+data);
+        console.log("フロントからのメッセージ:"+data);
     });
 
     socket.on('disconnect', () => {
