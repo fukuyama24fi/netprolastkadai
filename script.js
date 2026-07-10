@@ -17,6 +17,10 @@ function selectShape(type) {
 
   selectedShape = type;
   selectedShape.classList.add("selected");
+
+  if(selectShape.dataset.fillColor){
+    fillColorInput.value=selectShape.dataset.fillColor;
+  }
 }
 
 //図形を追加
@@ -24,17 +28,28 @@ function addShape(type) {
   const shape = document.createElement("div");
   shape.classList.add("shape");
 
-  if (type === "circle") {
-    shape.classList.add("circle");
-  }else if (type === "triangle") {
-    shape.classList.add("triangle");
-  }else {
-    shape.classList.add("rect");
-  }
+  let defayltColor = "#00000";
 
-  canvas.appendChild(shape);
-  selectShape(shape);
+if(type=="text"){
+  defayltColor="fffff";
+  shape.textContent="テキスト";
+  shape.isContentEditable = "false";
 }
+
+shape.dataset.fillColor=defayltColor;
+shape.style.setProperty("--fill-color",defayltColor);
+
+const shapeCount = canvas.querySelectorAll(".shape").length;
+const position = 80 + shapeCount*20;
+
+shape.style.left='${position}px';
+shape.style.top='${position}px';
+
+canvas.appendChild(shape);
+selectedShape(shape);
+}
+
+
 
 
 rectButton.addEventListener("click", () => {

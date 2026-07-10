@@ -79,24 +79,48 @@ body {
   position: absolute;
   width: 120px;
   height: 80px;
-  background: #4f8cff;
+  background: var(--fill-color,#4f8cff);
   left: 100px;
   top: 100px;
   cursor: move;
   user-select: none;
 }
 
+.shape.rect{
+  background: var(--fill-color,#4f8cff);
+}
+
+
 .shape.selected:not(.triangle){
   outline: 2px solid #4d11bd;
   outline-offset: 2px;
 }
 
+.shape.text{
+  width: auto;
+  height: auto;
+  min-width: 120px;
+  min-height: 36;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--fill-color,#ccc);
+  font-size: 24px;
+  font-weight: 500;
+
+  cursor: move;
+  white-space: pre;
+}
+.shape.text[contenteditable="true"]{
+cursor: text;
+user-select: text;
+}
 
 
 .shape.circle {
   border-radius: 50%;
   width: 80px;
   height: 80px;
+  background: var(--fill-color,#4f8cff)
 }
 
 .shape.triangle {
@@ -152,6 +176,23 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 14px;
+  cursor: pointer;
+}
+
+.color-tool{
+  margin-top: 8px;
+  color: wheat;
+  font-size: 14px;
+  flex-direction: column;
+  display: flex;
+  gap: 6px;
+}
+
+
+.color-tool input{
+  width: 100%;
+  height: 36px;
+  border: none;
   cursor: pointer;
 }
 
