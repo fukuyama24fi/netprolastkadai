@@ -5,6 +5,9 @@ const textButton = document.getElementById("text");
 const deleteButton = document.getElementById("delete");
 const fillColorInput = document.getElementById("fillColor");
 const canvas = document.getElementById("canvas");
+const APIURL = "http://localhost:3000/canvas";
+
+
 
 let selectedShape = null;
 let isDragging = false;
@@ -38,6 +41,9 @@ function addShape(type) {
   // rect / circle / triangle / text のクラスを付ける
   shape.classList.add(type);
 
+  shape.dataset.is=crypto.randomUUID;
+
+
   // 初期色
   let defaultColor = "#4f8cff";
 
@@ -66,6 +72,7 @@ function addShape(type) {
 
   // 追加した図形を選択する
   selectShape(shape);
+  saveCanvasState();
 }
 
 // 四角形を追加
@@ -109,6 +116,8 @@ deleteButton.addEventListener("click", () => {
   selectedShape.remove();
   selectedShape = null;
   isDragging = false;
+
+  saveCanvasState();
 });
 
 // 図形を押したとき
@@ -172,5 +181,53 @@ document.addEventListener("mousemove", (e) => {
 
 // マウスを離したとき
 document.addEventListener("mouseup", () => {
-  isDragging = false;
+  if(isDragging){
+    isDragging=false;
+    saveCanvasState();
+  }
 });
+
+
+
+
+
+function getShapeType(shape) {
+  if (shape.classList.contains("circle")) {
+    return "circle";
+  }
+
+  if (shape.classList.contains("triangle")) {
+    return "triangle";
+  }
+
+  return "rect";
+}
+
+async function saveCanvasState() {
+  const shapes = document.querySelectorAll(".shape");
+
+  const state = Array.from(shapes).map((shape) => {
+    return {
+      id: shape.dataset.id,
+      type: getShapeType(shape),
+      left: shape.style.left,
+      top: shape.style.top
+    };
+  });
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(state)
+    });
+
+    const result = await response.json();
+
+    console.log("保存成功:", result);
+  } catch (error) {
+    console.error("保存失敗:", error);
+  }
+}
