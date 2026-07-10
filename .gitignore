@@ -15,3 +15,7 @@ node_modules/
 
 #私の個人的なメモです
 Todo.text
+
+.env
+server/.env
+client/.env
