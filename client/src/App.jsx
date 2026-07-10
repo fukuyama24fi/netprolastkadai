@@ -1,45 +1,60 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import SocketService from './services/socketService'; // 作成したサービスをインポート
+import { useEffect, useState } from "react";
+import socketService from "./services/socketService";
 
 const App = () => {
-    // 1. キャンバスの状態を管理するState
     const [shapes, setShapes] = useState([]);
     
-    // 2. SocketServiceのインスタンスを生成（再生成を防ぐためuseMemoを使用）
-    const socketService = useMemo(() => new SocketService(), []);
-
     useEffect(() => {
-        // 3. マウント時に接続
         socketService.connect();
 
-        // 4. "message" イベントのリスナーを登録
+        // サーバーからデータを受信した時の処理
         socketService.onMessage((data) => {
-            console.log("サーバーからデータ受信:", data);
-            
-            // 受信したアクションに応じてStateを更新
-            // 例: ADD アクションなら新しい図形を追加
             if (data.action === "ADD") {
                 setShapes((prev) => [...prev, data.object]);
             }
-            // 例: UPDATE アクションなら既存図形を修正など
-            else if (data.action === "UPDATE") {
-                setShapes((prev) => 
-                    prev.map(s => s.id === data.id ? { ...s, ...data.changes } : s)
-                );
-            }
+            // UPDATEなどはここに追加
         });
-
-        // 5. アンマウント時に切断（メモリリーク防止）
-        return () => {
-            // 必要であれば SocketService に disconnect() を実装して呼び出す
-            // socketService.disconnect(); 
-        };
     }, [socketService]);
 
+    // 四角形を追加する関数
+    const addRect = () => {
+        const newRect = {
+            id: crypto.randomUUID(), // 一意なIDを生成
+            type: 'rect',
+            x: Math.random() * 300, // 適当な位置
+            y: Math.random() * 300,
+            width: 100,
+            height: 100,
+            fill: '#4f8cff'
+        };
+
+        // サーバーへ送信（これで全員の画面に同期されるはず）
+        socketService.sendMessage("ADD", { object: newRect });
+    };
+
     return (
-        <div>
+        <div style={{ padding: '20px' }}>
             <h1>リアルタイムキャンバス</h1>
-            {/* ここで shapes をレンダリング */}
+            <button onClick={addRect} style={{ marginBottom: '20px' }}>
+                四角形を追加
+            </button>
+
+            {/* キャンバスエリア */}
+            <div style={{ position: 'relative', width: '800px', height: '600px', border: '1px solid #ccc' }}>
+                {shapes.map((shape) => (
+                    <div
+                        key={shape.id}
+                        style={{
+                            position: 'absolute',
+                            left: `${shape.x}px`,
+                            top: `${shape.y}px`,
+                            width: `${shape.width}px`,
+                            height: `${shape.height}px`,
+                            backgroundColor: shape.fill
+                        }}
+                    />
+                ))}
+            </div>
         </div>
     );
 };

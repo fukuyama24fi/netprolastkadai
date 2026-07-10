@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 
 //そのうち.envからサーバーURLを読み込む
-const SOCKET_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:3000";
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
 //Socket.ioの接続や通信を管理するクラス
 class SocketService {
