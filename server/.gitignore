@@ -1,0 +1,12 @@
+#dependencies(依存関係)
+node_modules
+
+# environment variables(環境変数。.envなどのパスワードや秘密の鍵。一番知られたらまずいよ！)
+.env
+
+#logs(ログ)
+*.log
+npm-debug.log*
+
+#system files(システムファイル)
+.DS_Store

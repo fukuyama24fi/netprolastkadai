@@ -1,2 +1,17 @@
+#OS固有のゴミファイル(MacやWindowsが勝手に作る)
+.DS_Store
+Thumbs.db
+
+#VS Codeの設定ファイル(個人環境の設定を共有しないため)
+.vscode/
+
+#ログ系(どのフォルダで出ても不要)
+*.log
+
+#実行時に生成される一時フォルダやエディタのバックアップ
 node_modules/
+.temp/
+*.bak
+
+#私の個人的なメモです
 Todo.text
