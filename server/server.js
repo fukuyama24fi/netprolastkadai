@@ -28,7 +28,7 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
 
     //接続した本人だけに、今のキャンバスの状態(全部)を渡す
     socket.emit("message", {
-        action: "SYNC_RESPONSE",
+        action: "INIT",
         objects: canvasState
     });
 
