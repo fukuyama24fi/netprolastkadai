@@ -22,11 +22,11 @@ const pool = new Pool({ //データベースへの接続情報を設定
 
 //originは通信のチェック
 //プロトコル(http, https),ホスト名(localhost, google.comなど), ポート番号(3000,8080など)のうち一つでも違うと外部とみなされる
-//"*"はどの場所から来たアクセスでも全部許可する。あとで更新
+//"*"はどの場所から来たアクセスでも全部許可する
 // GETとPOST通信を許可
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: process.env.FRONTEND_URL || "*",
         methods: ["GET", "POST"]
     }
 });
