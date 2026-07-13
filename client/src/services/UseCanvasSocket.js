@@ -15,11 +15,7 @@ export function useCanvasSocket() {
       switch (data.action) {
         case "INIT": {
           setShapes(data.objects || []);
-
-          if (data.history) {
-            setHistory(data.history);
-          }
-
+          setHistory(data.history || []);
           break;
         }
 
@@ -28,40 +24,29 @@ export function useCanvasSocket() {
           break;
         }
 
-     case "ADD": {
-  if (!data.object) {
-    return;
-  }
+        case "ADD": {
+          if (!data.object) {
+            return;
+          }
 
-  setShapes((prev) => {
-    const exists = prev.some((shape) => {
-      return shape.id === data.object.id;
-    });
+          setShapes((prev) => {
+            const exists = prev.some((shape) => {
+              return shape.id === data.object.id;
+            });
 
-    if (exists) {
-      console.log("重複ADDを無視:", data.object.id);
-      return prev;
-    }
+            if (exists) {
+              console.log("重複ADDを無視:", data.object.id);
+              return prev;
+            }
 
-    return [...prev, data.object];
-  });
+            return [...prev, data.object];
+          });
 
-  if (data.history) {
-    setHistory((prev) => {
-      const exists = prev.some((item) => {
-        return item.id === data.history.id;
-      });
+          addHistoryIfNeeded(data.history);
 
-      if (exists) {
-        return prev;
-      }
+          break;
+        }
 
-      return [...prev, data.history];
-    });
-  }
-
-  break;
-}
         case "UPDATE": {
           const targetId = data.id || data.object?.id;
           const changes = data.changes || data.object || {};
@@ -82,19 +67,17 @@ export function useCanvasSocket() {
             )
           );
 
-          if (data.history) {
-            setHistory((prev) => [...prev, data.history]);
-          }
+          addHistoryIfNeeded(data.history);
 
           break;
         }
 
         case "DELETE": {
-          setShapes((prev) => prev.filter((shape) => shape.id !== data.id));
+          setShapes((prev) => {
+            return prev.filter((shape) => shape.id !== data.id);
+          });
 
-          if (data.history) {
-            setHistory((prev) => [...prev, data.history]);
-          }
+          addHistoryIfNeeded(data.history);
 
           break;
         }
@@ -102,9 +85,7 @@ export function useCanvasSocket() {
         case "CLEAR": {
           setShapes([]);
 
-          if (data.history) {
-            setHistory((prev) => [...prev, data.history]);
-          }
+          addHistoryIfNeeded(data.history);
 
           break;
         }
@@ -121,12 +102,36 @@ export function useCanvasSocket() {
     };
   }, []);
 
+  const addHistoryIfNeeded = (newHistory) => {
+    if (!newHistory) {
+      return;
+    }
+
+    setHistory((prev) => {
+      const key =
+        newHistory.id ||
+        `${newHistory.action}-${newHistory.objectId}-${newHistory.createdAt}`;
+
+      const exists = prev.some((item) => {
+        const itemKey =
+          item.id ||
+          `${item.action}-${item.objectId}-${item.createdAt}`;
+
+        return itemKey === key;
+      });
+
+      if (exists) {
+        return prev;
+      }
+
+      return [...prev, newHistory];
+    });
+  };
+
   const setUserName = (name) => {
     const nextName = name.trim() || "名無し";
 
     setUserNameState(nextName);
-
-    // socketService側に保存する関数がある前提
     socketService.setUserName(nextName);
   };
 
