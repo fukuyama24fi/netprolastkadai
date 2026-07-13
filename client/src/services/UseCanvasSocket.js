@@ -4,7 +4,7 @@ import socketService from "./socketService";
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
-  const [userName, setUserNameState] = useState(socketService.getUserName()); 
+  const [userName, setUserNameState] = useState(socketService.getUserName());
 
   useEffect(() => {
     socketService.connect();
@@ -15,6 +15,11 @@ export function useCanvasSocket() {
       switch (data.action) {
         case "INIT": {
           setShapes(data.objects || []);
+
+          if (data.history) {
+            setHistory(data.history);
+          }
+
           break;
         }
 
@@ -24,6 +29,10 @@ export function useCanvasSocket() {
         }
 
         case "ADD": {
+          if (!data.object) {
+            return;
+          }
+
           setShapes((prev) => {
             if (prev.find((shape) => shape.id === data.object.id)) {
               return prev;
@@ -41,14 +50,6 @@ export function useCanvasSocket() {
 
         case "UPDATE": {
           const targetId = data.id || data.object?.id;
-
-          /*
-            バックエンドが
-            { id, changes }
-            で返しても、
-            { object }
-            で返しても対応できるようにする
-          */
           const changes = data.changes || data.object || {};
 
           if (!targetId) {
@@ -106,6 +107,15 @@ export function useCanvasSocket() {
     };
   }, []);
 
+  const setUserName = (name) => {
+    const nextName = name.trim() || "名無し";
+
+    setUserNameState(nextName);
+
+    // socketService側に保存する関数がある前提
+    socketService.setUserName(nextName);
+  };
+
   const addRect = () => {
     const newRect = {
       id: crypto.randomUUID(),
@@ -119,14 +129,11 @@ export function useCanvasSocket() {
 
     socketService.sendMessage("ADD", {
       object: newRect,
+      userName,
     });
   };
 
   const updateRect = (id, changes) => {
-    /*
-      先にフロント側のshapesも更新する。
-      これを入れると、サーバー応答待ちで初期位置に戻りにくくなる。
-    */
     setShapes((prev) =>
       prev.map((shape) =>
         shape.id === id
@@ -141,22 +148,28 @@ export function useCanvasSocket() {
     socketService.sendMessage("UPDATE", {
       id,
       changes,
+      userName,
     });
   };
 
   const deleteRect = (id) => {
     socketService.sendMessage("DELETE", {
       id,
+      userName,
     });
   };
 
   const clearCanvas = () => {
-    socketService.sendMessage("CLEAR", {});
+    socketService.sendMessage("CLEAR", {
+      userName,
+    });
   };
 
   return {
     shapes,
     history,
+    userName,
+    setUserName,
     addRect,
     updateRect,
     deleteRect,
