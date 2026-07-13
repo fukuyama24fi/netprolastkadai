@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import socketService from "./services/socketService";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
