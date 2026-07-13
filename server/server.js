@@ -43,9 +43,9 @@ async function saveEditHistory({ action, objectId, userId, userName, changes }) 
     try {
         const result = await pool.query(
             `INSERT INTO edit_history (action, object_id, user_id, user_name, changes)
-             VALUES ($1, $2, $3, $4)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", changes, created_at AS "createdAt"`,
-            [action, objectId, userId, changes ? JSON.stringify(changes) : null]
+            [action, objectId, userId, userName, changes ? JSON.stringify(changes) : null]
         );
         return result.rows[0];
     } catch (err) {
@@ -58,7 +58,7 @@ async function saveEditHistory({ action, objectId, userId, userName, changes }) 
 async function sendHistory(socket) {
     try {
         const result = await pool.query(
-            `SELECT action, object_id AS "objectId", user_id AS "userId", changes, created_at AS "createdAt"
+            `SELECT action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", changes, created_at AS "createdAt"
              FROM edit_history
              ORDER BY created_at DESC
              LIMIT 100`
