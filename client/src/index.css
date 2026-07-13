@@ -17,3 +17,8 @@ body,
 body {
   overflow: hidden;
 }
+
+button,
+input {
+  font: inherit;
+}
