@@ -34,6 +34,20 @@ const App = () => {
     return shape.id === selectedId;
   });
 
+  const canvasWidth = Math.max(
+    2000,
+    ...viewShapes.map((shape) => {
+      return shape.x+shape.width+400;
+    })
+  );
+
+  const canvasHeigth = Math.max(
+    1400,
+    ...viewShapes.map((shape) =>{
+      return shape.y + shape.height + 400;
+    })
+  );
+
   const updateShapeLocal = (id, changes) => {
     setViewShapes((prev) => {
       const next = prev.map((shape) => {
@@ -244,7 +258,7 @@ const App = () => {
       </aside>
 
       <main className="main">
-        <div ref={canvasRef} className="canvas">
+        <div ref={canvasRef} className="canvas" style={{width:`${canvasWidth}px`,height:`${canvasHeigth}`}}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
