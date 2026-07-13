@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import socketService from "../services/socketService";
+import socketService from "./socketService";
 
 // キャンバスの状態管理とサーバーとの通信をまとめたカスタムフック
 // Javaで例えると「Service層」。画面(View = App.jsx)から通信処理を切り離すためのもの。
