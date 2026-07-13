@@ -28,26 +28,40 @@ export function useCanvasSocket() {
           break;
         }
 
-        case "ADD": {
-          if (!data.object) {
-            return;
-          }
+     case "ADD": {
+  if (!data.object) {
+    return;
+  }
 
-          setShapes((prev) => {
-            if (prev.find((shape) => shape.id === data.object.id)) {
-              return prev;
-            }
+  setShapes((prev) => {
+    const exists = prev.some((shape) => {
+      return shape.id === data.object.id;
+    });
 
-            return [...prev, data.object];
-          });
+    if (exists) {
+      console.log("重複ADDを無視:", data.object.id);
+      return prev;
+    }
 
-          if (data.history) {
-            setHistory((prev) => [...prev, data.history]);
-          }
+    return [...prev, data.object];
+  });
 
-          break;
-        }
+  if (data.history) {
+    setHistory((prev) => {
+      const exists = prev.some((item) => {
+        return item.id === data.history.id;
+      });
 
+      if (exists) {
+        return prev;
+      }
+
+      return [...prev, data.history];
+    });
+  }
+
+  break;
+}
         case "UPDATE": {
           const targetId = data.id || data.object?.id;
           const changes = data.changes || data.object || {};
