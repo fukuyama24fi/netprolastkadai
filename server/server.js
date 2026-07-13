@@ -8,7 +8,6 @@ import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライ
 
 dotenv.config(); //.envファイルを適用
 const { Pool } = pkg; //あらかじめ窓口を用意しておく
-
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -36,33 +35,6 @@ const pool = new Pool({ //データベースへの接続情報を設定
 
 //許可する更新対象の列リスト
 const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'text'];
-
-
-//サーバー起動時にDBから初期データを読み込む
-async function startServer() {
-    try {
-        //DB接続確認
-        //await:DBから返事が来るまで、次の行に進まない
-        await pool.query("SELECT 1");
-        console.log("データベース接続成功");
-
-        //初期化完了を待ってからサーバー起動
-        const res = await pool.query('SELECT * FROM canvas_objects');
-        canvasState = res.rows;
-        console.log(`初期データ読み込み完了 (${canvasState.length}件)`);
-
-        const PORT = process.env.PORT || 3000;
-        server.listen(PORT, () => {
-            console.log(`サーバーがポート ${process.env.PORT || 3000} で起動しました`);
-        });
-    } catch (err) {
-        console.error("サーバー起動失敗:", err);
-        process.exit(1);
-    }
-
-
-}
-startServer(); //関数を実行
 
 //操作履歴をedit_historyテーブルに保存する関数
 //?:プレースホルダーと同じ役割（SQLインジェクション対策）
@@ -96,9 +68,35 @@ async function sendHistory(socket) {
     }
 }
 
+//サーバー起動時にDBから初期データを読み込む
+async function startServer() {
+    try {
+        //DB接続確認
+        //await:DBから返事が来るまで、次の行に進まない
+        await pool.query("SELECT 1");
+        console.log("データベース接続成功");
+
+        //初期化完了を待ってからサーバー起動
+        const res = await pool.query('SELECT * FROM canvas_objects');
+        canvasState = res.rows;
+        console.log(`初期データ読み込み完了 (${canvasState.length}件)`);
+
+        const PORT = process.env.PORT || 3000;
+        server.listen(PORT, () => {
+            console.log(`サーバーがポート ${process.env.PORT || 3000} で起動しました`);
+        });
+    } catch (err) {
+        console.error("サーバー起動失敗:", err);
+        process.exit(1);
+    }
+
+
+}
+startServer(); //関数を実行
+
 
 //接続・切断など各アクションの処理を一つにまとめたもの
-io.on('connection', (socket) => { // クライアントが1人接続してきたら実行
+io.on('connection', async(socket) => { // クライアントが1人接続してきたら実行
     //接続時にクライアントが送ってきたuserIdを取得（無ければsocket.idで代用）
     const connectedUserId = socket.handshake.query.userId || socket.id;
     console.log(`${socket.id} 接続しました (userId: ${connectedUserId})`);
@@ -109,7 +107,17 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
         objects: canvasState
     });
 
-    sendHistory(socket); //接続した本人だけに、過去の操作履歴も渡す
+    //DBから最新の編集履歴を10件取得して、クライアントに送る
+    //edit_historyテーブルから、新しい順（DESC）に10件取得
+    const historyResult = await pool.query(
+      "SELECT * FROM edit_history ORDER BY created_at DESC LIMIT 10"
+    );
+    
+    //フロントエンド（Usecanvasocket.js）が待っている「HISTORY_RESPONSE」というアクション名で送る
+    socket.emit("message", { 
+      action: "HISTORY_RESPONSE", 
+      history: historyResult.rows 
+    });
 
     //メッセージ受信とaction分岐
     socket.on("message", async (data) => { //クライアントからの操作を受信
@@ -135,7 +143,7 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     canvasState.push(data.object);
                     io.emit("message", data); //つながっている全員(自分含む)に操作内容を再送
                     //追加:履歴を保存
-                    saveEditHistory({
+                    await saveEditHistory({
                         action: "ADD", objectId: data.object.id,
                         userId,
                         changes: data.object
@@ -188,7 +196,7 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                         id: data.id,
                         changes: updateData
                     });
-                    saveEditHistory({
+                    await saveEditHistory({
                         action: "UPDATE",
                         objectId: data.id,
                         userId,
@@ -206,7 +214,7 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
                     canvasState = canvasState.filter(obj => obj.id !== data.id);
                     io.emit("message", data);
-                    saveEditHistory({
+                    await saveEditHistory({
                         action: "DELETE",
                         objectId: data.id,
                         userId,
@@ -222,7 +230,7 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     await pool.query('DELETE FROM canvas_objects');
                     canvasState = [];
                     io.emit("message", data);
-                    saveEditHistory({
+                    await saveEditHistory({
                         action: "CLEAR",
                         objectId: null,
                         userId,
