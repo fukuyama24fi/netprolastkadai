@@ -39,7 +39,7 @@ const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'tex
 
 //操作履歴をedit_historyテーブルに保存する関数
 //?:プレースホルダーと同じ役割（SQLインジェクション対策）
-async function saveEditHistory({ action, objectId, userId,userName, changes }) {
+async function saveEditHistory({ action, objectId, userId, userName, changes }) {
     try {
         const result = await pool.query(
             `INSERT INTO edit_history (action, object_id, user_id, user_name, changes)
@@ -130,11 +130,11 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
         //メモリ(canvasState)の更新
         switch (data.action) {
             case "SET_USERNAME":
-            userNames[userId] = data.userName;
-            io.emit("message", { action: "USER_RENAMED", userId, userName: data.userName });
-            break;
+                userNames[userId] = data.userName;
+                io.emit("message", { action: "USER_RENAMED", userId, userName: data.userName });
+                break;
 
-            case "ADD":
+            case "ADD": {
                 //ADDの重複チェック
                 if (canvasState.find(obj => obj.id === data.object.id)) {
                     console.log("ID重複:", data.object.id);
@@ -160,8 +160,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     console.error("ADD処理のDB保存エラー:", err);
                 }
                 break;
+            }
 
-            case "UPDATE":
+            case "UPDATE": {
                 if (!data.changes) {
                     break; //変更がなければスキップ
                 }
@@ -213,8 +214,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     console.error("UPDATE失敗:", err);
                 }
                 break;
+            }
 
-            case "DELETE":
+            case "DELETE": {
                 try {
                     await pool.query('DELETE FROM canvas_objects WHERE id = $1', [data.id]);
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
@@ -231,8 +233,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     console.error("DELETE処理のDB保存エラー:", err);
                 }
                 break;
+            }
 
-            case "CLEAR":
+            case "CLEAR": {
                 try {
                     await pool.query('DELETE FROM canvas_objects');
                     canvasState = [];
@@ -247,6 +250,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     console.error("CLEAR処理のDB保存エラー:", err);
                 }
                 break;
+            }
 
             default:
                 console.log("存在しない操作です", data.action);
