@@ -1,39 +1,133 @@
-.app-container {
-  padding: 20px;
+* {
+  box-sizing: border-box;
 }
 
-.toolbar {
-  margin-bottom: 20px;
+body {
+  margin: 0;
+  font-family: sans-serif;
+  background: #f5f5f5;
+  overflow: hidden;
 }
 
-.toolbar button {
-  margin-right: 10px;
+.app {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+
+.tool {
+  width: 180px;
+  height: 100vh;
+  padding: 16px;
+
+  background: #222;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  flex-shrink: 0;
+}
+
+.tool h1 {
+  margin: 0 0 16px;
+  color: white;
+  font-size: 22px;
+}
+
+.tool button {
+  width: 100%;
+  padding: 10px 12px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: #4f8cff;
+  color: white;
+
+  cursor: pointer;
+}
+
+.tool button:hover {
+  opacity: 0.9;
+}
+
+.delete-button-main {
+  margin-top: auto;
+  background: #e74c3c !important;
+}
+
+.color-tool {
+  margin-top: 8px;
+
+  color: white;
+  font-size: 14px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.color-tool input {
+  width: 100%;
+  height: 36px;
+  border: none;
+  cursor: pointer;
+}
+
+.main {
+  flex: 1;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 24px;
+  overflow: auto;
 }
 
 .canvas {
   position: relative;
-  width: 800px;
-  height: 600px;
+
+  width: 1300px;
+  height: 800px;
+
+  background: white;
   border: 1px solid #ccc;
+
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-/* 図形ごとの位置・サイズ・色は動的に変わるので、
-   共通の見た目（position, cursorなど）だけここに書く。
-   left, top, width, height, backgroundColor は
-   App.jsx側でstyle属性のまま指定する(値が図形ごとに違うため)。 */
 .shape {
   position: absolute;
-  cursor: pointer;
+
+  cursor: move;
+  user-select: none;
 }
 
-.history-section {
-  margin-top: 30px;
+.shape.selected {
+  outline: 2px solid #4d11bd;
+  outline-offset: 2px;
 }
 
-.history-list {
-  max-height: 200px;
-  overflow-y: auto;
-  font-size: 14px;
-  list-style: none;
-  padding-left: 0;
+.resize-handle {
+  display: none;
+
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+
+  width: 12px;
+  height: 12px;
+
+  background: white;
+  border: 2px solid #4d11bd;
+  border-radius: 2px;
+
+  cursor: nwse-resize;
+}
+
+.shape.selected .resize-handle {
+  display: block;
 }
