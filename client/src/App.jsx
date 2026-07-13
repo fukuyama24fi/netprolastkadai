@@ -1,4 +1,4 @@
-import { UsecanvasSocket } from "./Usecanvasocket";
+import { Usecanvasocket } from "./Usecanvasocket";
 import "./App.css";
 
 const App = () => {
