@@ -258,7 +258,7 @@ const App = () => {
       </aside>
 
       <main className="main">
-        <div ref={canvasRef} className="canvas" style={{width:`${canvasWidth}px`,height:`${canvasHeigth}`}}>
+        <div ref={canvasRef} className="canvas" style={{width:`${canvasWidth}px`,height:`${canvasHeigth}px`}}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
