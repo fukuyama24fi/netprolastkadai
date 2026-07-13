@@ -4,6 +4,7 @@ import socketService from "./socketService";
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
+  const [userName, setUserNameState] = useState(socketService.getUserName()); 
 
   useEffect(() => {
     socketService.connect();

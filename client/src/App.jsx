@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import socketService from "./services/socketService";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
@@ -7,6 +6,8 @@ const App = () => {
   const {
     shapes,
     history,
+    userName,
+    setUserName,
     addRect,
     updateRect,
     deleteRect,
@@ -38,13 +39,13 @@ const App = () => {
   const canvasWidth = Math.max(
     2000,
     ...viewShapes.map((shape) => {
-      return shape.x+shape.width+400;
+      return shape.x + shape.width + 400;
     })
   );
 
   const canvasHeigth = Math.max(
     1400,
-    ...viewShapes.map((shape) =>{
+    ...viewShapes.map((shape) => {
       return shape.y + shape.height + 400;
     })
   );
@@ -259,7 +260,7 @@ const App = () => {
       </aside>
 
       <main className="main">
-        <div ref={canvasRef} className="canvas" style={{width:`${canvasWidth}px`,height:`${canvasHeigth}px`}}>
+        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeigth}px` }}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
@@ -296,8 +297,8 @@ const App = () => {
         <div className="user-settings">
           表示名：
           <input
-            defaultValue={socketService.getUserName()}
-            onBlur={(e) => socketService.setUserName(e.target.value)}
+            defaultValue={userName}
+            onBlur={(e) => setUserName(e.target.value)}
           />
         </div>
 
