@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
-import socketService from "./services/socketService";
 
 const App = () => {
   const {
