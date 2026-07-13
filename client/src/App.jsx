@@ -1,135 +1,71 @@
-<<<<<<< HEAD
 import { useEffect, useRef, useState } from "react";
-import socketService from "./services/socketService";
+import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
 const App = () => {
-  const [shapes, setShapes] = useState([]);
+  const {
+    shapes,
+    history,
+    addRect,
+    updateRect,
+    deleteRect,
+    clearCanvas,
+  } = useCanvasSocket();
+
+  const [viewShapes, setViewShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-
-  const canvasRef = useRef(null);
-  const shapesRef = useRef([]);
-
   const [interaction, setInteraction] = useState(null);
 
+  const canvasRef = useRef(null);
+  const viewShapesRef = useRef([]);
+
+  // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
-    shapesRef.current = shapes;
-  }, [shapes]);
+    // ドラッグ中・リサイズ中は、操作中の見た目を優先する
+    if (!interaction) {
+      setViewShapes(shapes);
+      viewShapesRef.current = shapes;
+    }
+  }, [shapes, interaction]);
 
-  useEffect(() => {
-    socketService.connect();
-
-    const handleMessage = (data) => {
-      switch (data.action) {
-        case "INIT":
-          setShapes(data.objects || []);
-          break;
-
-        case "ADD":
-          setShapes((prev) => {
-            if (prev.find((shape) => shape.id === data.object.id)) {
-              return prev;
-            }
-
-            return [...prev, data.object];
-          });
-          break;
-
-        case "UPDATE":
-          setShapes((prev) =>
-            prev.map((shape) =>
-              shape.id === data.id
-                ? {
-                    ...shape,
-                    ...data.changes,
-                  }
-                : shape
-            )
-          );
-          break;
-
-        case "DELETE":
-          setShapes((prev) => prev.filter((shape) => shape.id !== data.id));
-
-          if (selectedId === data.id) {
-            setSelectedId(null);
-          }
-
-          break;
-
-        case "CLEAR":
-          setShapes([]);
-          setSelectedId(null);
-          break;
-
-        default:
-          console.log("不明なアクション:", data.action);
-      }
-    };
-
-    socketService.onMessage(handleMessage);
-
-    return () => {
-      socketService.offMessage(handleMessage);
-    };
-  }, [selectedId]);
-
-  const selectedShape = shapes.find((shape) => shape.id === selectedId);
-
-  const addRect = () => {
-    const newRect = {
-      id: crypto.randomUUID(),
-      type: "rect",
-      x: 100,
-      y: 100,
-      width: 120,
-      height: 80,
-      fill: "#4f8cff",
-    };
-
-    socketService.sendMessage("ADD", {
-      object: newRect,
-    });
-  };
+  const selectedShape = viewShapes.find((shape) => {
+    return shape.id === selectedId;
+  });
 
   const updateShapeLocal = (id, changes) => {
-    setShapes((prev) => {
-      const next = prev.map((shape) =>
-        shape.id === id
-          ? {
-              ...shape,
-              ...changes,
-            }
-          : shape
-      );
+    setViewShapes((prev) => {
+      const next = prev.map((shape) => {
+        if (shape.id !== id) {
+          return shape;
+        }
 
-      shapesRef.current = next;
+        return {
+          ...shape,
+          ...changes,
+        };
+      });
+
+      viewShapesRef.current = next;
 
       return next;
     });
   };
 
-  const sendShapeUpdate = (id, changes) => {
-    socketService.sendMessage("UPDATE", {
-      id,
-      changes,
-    });
+  const handleAddRect = () => {
+    addRect();
   };
 
-  const deleteSelectedShape = () => {
+  const handleClearCanvas = () => {
+    clearCanvas();
+    setSelectedId(null);
+  };
+
+  const handleDeleteSelected = () => {
     if (!selectedId) {
       return;
     }
 
-    socketService.sendMessage("DELETE", {
-      id: selectedId,
-    });
-
-    setSelectedId(null);
-  };
-
-  const clearCanvas = () => {
-    socketService.sendMessage("CLEAR", {});
+    deleteRect(selectedId);
     setSelectedId(null);
   };
 
@@ -144,7 +80,7 @@ const App = () => {
       fill,
     });
 
-    sendShapeUpdate(selectedId, {
+    updateRect(selectedId, {
       fill,
     });
   };
@@ -196,8 +132,11 @@ const App = () => {
       const canvasRect = canvas.getBoundingClientRect();
 
       if (interaction.mode === "drag") {
-        const newX = event.clientX - canvasRect.left - interaction.offsetX;
-        const newY = event.clientY - canvasRect.top - interaction.offsetY;
+        const newX =
+          event.clientX - canvasRect.left - interaction.offsetX;
+
+        const newY =
+          event.clientY - canvasRect.top - interaction.offsetY;
 
         updateShapeLocal(interaction.id, {
           x: newX,
@@ -209,8 +148,15 @@ const App = () => {
         const diffX = event.clientX - interaction.startX;
         const diffY = event.clientY - interaction.startY;
 
-        const newWidth = Math.max(30, interaction.startWidth + diffX);
-        const newHeight = Math.max(30, interaction.startHeight + diffY);
+        const newWidth = Math.max(
+          30,
+          interaction.startWidth + diffX
+        );
+
+        const newHeight = Math.max(
+          30,
+          interaction.startHeight + diffY
+        );
 
         updateShapeLocal(interaction.id, {
           width: newWidth,
@@ -220,20 +166,20 @@ const App = () => {
     };
 
     const handleMouseUp = () => {
-      const targetShape = shapesRef.current.find(
-        (shape) => shape.id === interaction.id
-      );
+      const targetShape = viewShapesRef.current.find((shape) => {
+        return shape.id === interaction.id;
+      });
 
       if (targetShape) {
         if (interaction.mode === "drag") {
-          sendShapeUpdate(targetShape.id, {
+          updateRect(targetShape.id, {
             x: targetShape.x,
             y: targetShape.y,
           });
         }
 
         if (interaction.mode === "resize") {
-          sendShapeUpdate(targetShape.id, {
+          updateRect(targetShape.id, {
             width: targetShape.width,
             height: targetShape.height,
           });
@@ -250,14 +196,14 @@ const App = () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [interaction]);
+  }, [interaction, updateRect]);
 
   return (
     <div className="app">
       <aside className="tool">
         <h1>Pikva</h1>
 
-        <button type="button" onClick={addRect}>
+        <button type="button" onClick={handleAddRect}>
           四角形を追加
         </button>
 
@@ -273,25 +219,29 @@ const App = () => {
         <button
           type="button"
           className="delete-button-main"
-          onClick={deleteSelectedShape}
+          onClick={handleDeleteSelected}
         >
           選択中を削除
         </button>
 
-        <button type="button" onClick={clearCanvas}>
+        <button type="button" onClick={handleClearCanvas}>
           全て消去
         </button>
       </aside>
 
       <main className="main">
         <div ref={canvasRef} className="canvas">
-          {shapes.map((shape) => {
+          {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
             return (
               <div
                 key={shape.id}
-                className={`shape ${isSelected ? "selected" : ""}`}
+                className={[
+                  "shape",
+                  shape.type || "rect",
+                  isSelected ? "selected" : "",
+                ].join(" ")}
                 onMouseDown={(event) => startDrag(event, shape)}
                 style={{
                   left: `${shape.x}px`,
@@ -310,41 +260,10 @@ const App = () => {
           })}
         </div>
       </main>
-=======
-import { useCanvasSocket } from "./services/UseCanvasSocket";
-import "./App.css";
 
-const App = () => {
-  const { shapes, history, addRect, updateRect, deleteRect, clearCanvas } = useCanvasSocket();
-
-  return (
-    <div className="app-container">
-      <h1>リアルタイムキャンバス</h1>
-      <div className="toolbar">
-        <button onClick={addRect}>四角形を追加</button>
-        <button onClick={clearCanvas}>全て消去</button>
-      </div>
-
-      <div className="canvas">
-        {shapes.map((shape) => (
-          <div
-            key={shape.id}
-            className="shape"
-            onClick={() => updateRect(shape.id)}
-            onContextMenu={(e) => { e.preventDefault(); deleteRect(shape.id); }}
-            style={{
-              left: `${shape.x}px`,
-              top: `${shape.y}px`,
-              width: `${shape.width}px`,
-              height: `${shape.height}px`,
-              backgroundColor: shape.fill,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="history-section">
+      <section className="history-section">
         <h2>編集履歴</h2>
+
         <ul className="history-list">
           {history.map((h, i) => (
             <li key={i}>
@@ -353,8 +272,7 @@ const App = () => {
             </li>
           ))}
         </ul>
-      </div>
->>>>>>> e8fbcfda320f7187018ded0583c5c8337bedc6dc
+      </section>
     </div>
   );
 };

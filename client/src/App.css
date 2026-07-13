@@ -9,12 +9,14 @@ body {
   overflow: hidden;
 }
 
+/* アプリ全体 */
 .app {
   display: flex;
   width: 100vw;
   height: 100vh;
 }
 
+/* 左ツールバー */
 .tool {
   width: 180px;
   height: 100vh;
@@ -32,7 +34,7 @@ body {
 .tool h1 {
   margin: 0 0 16px;
   color: white;
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .tool button {
@@ -52,11 +54,13 @@ body {
   opacity: 0.9;
 }
 
+/* 選択中削除ボタン */
 .delete-button-main {
   margin-top: auto;
   background: #e74c3c !important;
 }
 
+/* カラーピッカー */
 .color-tool {
   margin-top: 8px;
 
@@ -71,10 +75,12 @@ body {
 .color-tool input {
   width: 100%;
   height: 36px;
+
   border: none;
   cursor: pointer;
 }
 
+/* キャンバスを中央に配置する領域 */
 .main {
   flex: 1;
 
@@ -86,6 +92,7 @@ body {
   overflow: auto;
 }
 
+/* React版では #canvas ではなく .canvas */
 .canvas {
   position: relative;
 
@@ -99,6 +106,7 @@ body {
   flex-shrink: 0;
 }
 
+/* 図形共通 */
 .shape {
   position: absolute;
 
@@ -106,11 +114,13 @@ body {
   user-select: none;
 }
 
+/* 選択中 */
 .shape.selected {
   outline: 2px solid #4d11bd;
   outline-offset: 2px;
 }
 
+/* リサイズハンドル */
 .resize-handle {
   display: none;
 
@@ -126,8 +136,32 @@ body {
   border-radius: 2px;
 
   cursor: nwse-resize;
+  z-index: 10;
 }
 
 .shape.selected .resize-handle {
   display: block;
+}
+
+/* 編集履歴 */
+.history-section {
+  width: 280px;
+  height: 100vh;
+
+  padding: 16px;
+
+  background: #fafafa;
+  border-left: 1px solid #ddd;
+
+  overflow: auto;
+}
+
+.history-section h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.history-list {
+  padding-left: 18px;
+  font-size: 12px;
 }
