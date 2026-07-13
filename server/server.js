@@ -12,6 +12,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
 const server = http.createServer(app);
+const userNames = {}; //ユーザー名(ID,ユーザ名)
 
 //originは通信のチェック
 //プロトコル(http, https),ホスト名(localhost, google.comなど), ポート番号(3000,8080など)のうち一つでも違うと外部とみなされる
@@ -38,12 +39,12 @@ const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'tex
 
 //操作履歴をedit_historyテーブルに保存する関数
 //?:プレースホルダーと同じ役割（SQLインジェクション対策）
-async function saveEditHistory({ action, objectId, userId, changes }) {
+async function saveEditHistory({ action, objectId, userId,userName, changes }) {
     try {
         const result = await pool.query(
-            `INSERT INTO edit_history (action, object_id, user_id, changes)
+            `INSERT INTO edit_history (action, object_id, user_id, user_name, changes)
              VALUES ($1, $2, $3, $4)
-             RETURNING action, object_id AS "objectId", user_id AS "userId", changes, created_at AS "createdAt"`,
+             RETURNING action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", changes, created_at AS "createdAt"`,
             [action, objectId, userId, changes ? JSON.stringify(changes) : null]
         );
         return result.rows[0];
@@ -102,7 +103,9 @@ startServer(); //関数を実行
 io.on('connection', async (socket) => { // クライアントが1人接続してきたら実行
     //接続時にクライアントが送ってきたuserIdを取得（無ければsocket.idで代用）
     const connectedUserId = socket.handshake.query.userId || socket.id;
-    console.log(`${socket.id} 接続しました (userId: ${connectedUserId})`);
+    const connectedUserName = socket.handshake.query.userName || "名無しさん";
+    userNames[connectedUserId] = connectedUserName;
+    console.log(`${socket.id} 接続しました (userId: ${connectedUserId}),, userName: ${connectedUserName})`);
 
     //接続した本人だけに、今のキャンバスの状態(全部)を渡す
     socket.emit("message", {
@@ -122,9 +125,15 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
         //送られてきたuserIdが無ければ接続時のIDを使う
         const userId = data.userId || connectedUserId;
+        const userName = userNames[userId] || connectedUserName;
 
         //メモリ(canvasState)の更新
         switch (data.action) {
+            case "SET_USERNAME":
+            userNames[userId] = data.userName;
+            io.emit("message", { action: "USER_RENAMED", userId, userName: data.userName });
+            break;
+
             case "ADD":
                 //ADDの重複チェック
                 if (canvasState.find(obj => obj.id === data.object.id)) {

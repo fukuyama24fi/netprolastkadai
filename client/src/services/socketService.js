@@ -1,6 +1,5 @@
 import { io } from "socket.io-client";
 
-//そのうち.envからサーバーURLを読み込む
 const SOCKET_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
 //Socket.ioの接続や通信を管理するクラス
@@ -9,10 +8,44 @@ class SocketService {
         this.socket = null;
     }
 
+    //ブラウザ固有のID。一度作ったらlocalStorageに保存し、以後は使い回す
+    getUserId() {
+        let userId = localStorage.getItem("userId");
+        if (!userId) {
+            userId = crypto.randomUUID();
+            localStorage.setItem("userId", userId);
+        }
+        return userId;
+    }
+
+    // 表示用の名前。ユーザーが自由に変更できる
+    getUserName() {
+        return localStorage.getItem("userName") || "名無しさん";
+    }
+
+     setUserName(name) {
+        localStorage.setItem("userName", name);
+        if (this.socket?.connected) {
+            this.socket.emit("message", {
+                action: "SET_USERNAME",
+                userId: this.getUserId(),
+                userName: name
+            });
+        }
+    }
+
     //Socket.io接続
     connect() {
         //まだ接続してない場合
         if (!this.socket) {
+            const userId = this.getUserId();
+            const userName = this.getUserName();
+
+            //ここでuserIdとuserNameをサーバーに渡す
+            this.socket = io(SOCKET_URL, {
+                query: { userId, userName }
+            });
+            
             this.socket = io(SOCKET_URL);
             //接続が確立した瞬間に実行されるリスナーを登録
             this.socket.on("connect", () => {

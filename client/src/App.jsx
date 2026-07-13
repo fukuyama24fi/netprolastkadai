@@ -27,7 +27,7 @@ const App = () => {
       return;
     }
     setViewShapes(shapes);
-    viewShapesRef.current=shapes;
+    viewShapesRef.current = shapes;
   }, [shapes]);
 
   const selectedShape = viewShapes.find((shape) => {
@@ -91,7 +91,7 @@ const App = () => {
   const startDrag = (event, shape) => {
     setSelectedId(shape.id);
 
-    didMoveRef.current=false;
+    didMoveRef.current = false;
 
     const shapeRect = event.currentTarget.getBoundingClientRect();
 
@@ -109,7 +109,7 @@ const App = () => {
     event.stopPropagation();
 
     setSelectedId(shape.id);
-    didMoveRef.current=false;
+    didMoveRef.current = false;
 
     setInteraction({
       mode: "resize",
@@ -130,13 +130,13 @@ const App = () => {
 
     const handleMouseMove = (event) => {
       const canvas = canvasRef.current;
-      
+
 
       if (!canvas) {
         return;
       }
 
-      didMoveRef.current=true;
+      didMoveRef.current = true;
 
       const canvasRect = canvas.getBoundingClientRect();
 
@@ -176,7 +176,7 @@ const App = () => {
 
     const handleMouseUp = () => {
 
-      if(!didMoveRef.current){
+      if (!didMoveRef.current) {
         setInteraction(null);
         return
       }
@@ -278,11 +278,21 @@ const App = () => {
       <section className="history-section">
         <h2>編集履歴</h2>
 
+        <div className="user-settings">
+          表示名：
+          <input
+            defaultValue={socketService.getUserName()}
+            onBlur={(e) => socketService.setUserName(e.target.value)}
+          />
+        </div>
+
         <ul className="history-list">
           {history.map((h, i) => (
             <li key={i}>
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
-              {h.objectId ? `（${h.objectId}）` : ""} by {h.userId}
+              {h.objectId && `（${h.objectId.slice(0, 8)}）`}
+              {" by "}
+              {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
         </ul>
