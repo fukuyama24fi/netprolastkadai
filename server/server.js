@@ -14,12 +14,6 @@ app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
 const server = http.createServer(app);
 
-//Neon 接続設定
-const pool = new Pool({ //データベースへの接続情報を設定
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // SSL接続（Neonで必要）
-});
-
 //originは通信のチェック
 //プロトコル(http, https),ホスト名(localhost, google.comなど), ポート番号(3000,8080など)のうち一つでも違うと外部とみなされる
 //"*"はどの場所から来たアクセスでも全部許可する
@@ -34,8 +28,15 @@ const io = new Server(server, {
 //キャンバスの状態を保持する変数
 let canvasState = [];
 
+//Neon 接続設定
+const pool = new Pool({ //データベースへの接続情報を設定
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // SSL接続（Neonで必要）
+});
+
 //許可する更新対象の列リスト
 const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'text'];
+
 
 //サーバー起動時にDBから初期データを読み込む
 async function startServer() {
@@ -63,9 +64,44 @@ async function startServer() {
 }
 startServer(); //関数を実行
 
+//操作履歴をedit_historyテーブルに保存する関数
+//?:プレースホルダーと同じ役割（SQLインジェクション対策）
+async function saveEditHistory({ action, objectId, userId, changes }) {
+    try {
+        await pool.query(
+            `INSERT INTO edit_history (action, object_id, user_id, changes) VALUES ($1, $2, $3, $4)`,
+            [action, objectId, userId, changes ? JSON.stringify(changes) : null]
+        );
+    } catch (err) {
+        console.error("履歴の保存に失敗しました:", err);
+    }
+}
+
+//新しく接続してきた人に、過去の操作履歴を送る関数
+// 直近100件だけ取得（全件だと数が増えたとき重くなるので）
+async function sendHistory(socket) {
+    try {
+        const result = await pool.query(
+            `SELECT action, object_id AS "objectId", user_id AS "userId", changes, created_at AS "createdAt"
+             FROM edit_history
+             ORDER BY created_at DESC
+             LIMIT 100`
+        );
+        socket.emit("message", {
+            action: "HISTORY_RESPONSE",
+            history: result.rows.reverse() //DESC(新しい順)で取ってきたので、古い順に並べ直してから渡す
+        });
+    } catch (err) {
+        console.error("履歴の取得に失敗しました:", err);
+    }
+}
+
+
 //接続・切断など各アクションの処理を一つにまとめたもの
 io.on('connection', (socket) => { // クライアントが1人接続してきたら実行
-    console.log(`${socket.id} 接続しました`); // 誰が接続したかコンソールに表示
+    //接続時にクライアントが送ってきたuserIdを取得（無ければsocket.idで代用）
+    const connectedUserId = socket.handshake.query.userId || socket.id;
+    console.log(`${socket.id} 接続しました (userId: ${connectedUserId})`);
 
     //接続した本人だけに、今のキャンバスの状態(全部)を渡す
     socket.emit("message", {
@@ -73,9 +109,14 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
         objects: canvasState
     });
 
+    sendHistory(socket); //接続した本人だけに、過去の操作履歴も渡す
+
     //メッセージ受信とaction分岐
     socket.on("message", async (data) => { //クライアントからの操作を受信
         console.log("受信したアクション:", data.action, data);
+
+        //送られてきたuserIdが無ければ接続時のIDを使う
+        const userId = data.userId || connectedUserId;
 
         //メモリ(canvasState)の更新
         switch (data.action) {
@@ -93,6 +134,12 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     );
                     canvasState.push(data.object);
                     io.emit("message", data); //つながっている全員(自分含む)に操作内容を再送
+                    //追加:履歴を保存
+                    saveEditHistory({
+                        action: "ADD", objectId: data.object.id,
+                        userId,
+                        changes: data.object
+                    });
                 } catch (err) {
                     console.error("ADD処理のDB保存エラー:", err);
                 }
@@ -141,6 +188,12 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                         id: data.id,
                         changes: updateData
                     });
+                    saveEditHistory({
+                        action: "UPDATE",
+                        objectId: data.id,
+                        userId,
+                        changes: data.changes
+                    });
 
                 } catch (err) {
                     console.error("UPDATE失敗:", err);
@@ -153,6 +206,12 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
                     canvasState = canvasState.filter(obj => obj.id !== data.id);
                     io.emit("message", data);
+                    saveEditHistory({
+                        action: "DELETE",
+                        objectId: data.id,
+                        userId,
+                        changes: null
+                    });
                 } catch (err) {
                     console.error("DELETE処理のDB保存エラー:", err);
                 }
@@ -163,6 +222,12 @@ io.on('connection', (socket) => { // クライアントが1人接続してきた
                     await pool.query('DELETE FROM canvas_objects');
                     canvasState = [];
                     io.emit("message", data);
+                    saveEditHistory({
+                        action: "CLEAR",
+                        objectId: null,
+                        userId,
+                        changes: null
+                    });
                 } catch (err) {
                     console.error("CLEAR処理のDB保存エラー:", err);
                 }
