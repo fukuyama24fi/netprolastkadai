@@ -60,8 +60,8 @@ export function useCanvasSocket() {
     const newRect = {
       id: crypto.randomUUID(),
       type: 'rect',
-      x: Math.random() * 300,
-      y: Math.random() * 300,
+      x:  300,
+      y:  300,
       width: 100,
       height: 100,
       fill: '#4f8cff'
@@ -69,12 +69,12 @@ export function useCanvasSocket() {
     socketService.sendMessage("ADD", { object: newRect });
   };
 
-  const updateRect = (id) => {
+  const updateRect = (id,changes) => {
     // 例: 色をランダムに変更する処理
     socketService.sendMessage("UPDATE", {
       id: id,
-      changes: { fill: '#' + Math.floor(Math.random() * 16777215).toString(16) }
-    });
+      changes,
+      });
   };
 
   const deleteRect = (id) => {

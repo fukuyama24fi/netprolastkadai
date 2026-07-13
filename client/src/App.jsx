@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
+import socketService from "./services/socketService";
 
 const App = () => {
   const {
@@ -18,6 +19,7 @@ const App = () => {
 
   const canvasRef = useRef(null);
   const viewShapesRef = useRef([]);
+  const didMoveRef = useRef(false);
 
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
@@ -86,8 +88,11 @@ const App = () => {
     });
   };
 
+
   const startDrag = (event, shape) => {
     setSelectedId(shape.id);
+
+    didMoveRef.current=false;
 
     const shapeRect = event.currentTarget.getBoundingClientRect();
 
@@ -105,6 +110,7 @@ const App = () => {
     event.stopPropagation();
 
     setSelectedId(shape.id);
+    didMoveRef.current=false;
 
     setInteraction({
       mode: "resize",
@@ -125,10 +131,13 @@ const App = () => {
 
     const handleMouseMove = (event) => {
       const canvas = canvasRef.current;
+      
 
       if (!canvas) {
         return;
       }
+
+      didMoveRef.current=true;
 
       const canvasRect = canvas.getBoundingClientRect();
 
@@ -167,6 +176,11 @@ const App = () => {
     };
 
     const handleMouseUp = () => {
+
+      if(!didMoveRef.current){
+        setInteraction(null);
+        return
+      }
       const targetShape = viewShapesRef.current.find((shape) => {
         return shape.id === interaction.id;
       });
