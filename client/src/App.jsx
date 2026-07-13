@@ -22,11 +22,12 @@ const App = () => {
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
     // ドラッグ中・リサイズ中は、操作中の見た目を優先する
-    if (!interaction) {
-      setViewShapes(shapes);
-      viewShapesRef.current = shapes;
+    if (interaction) {
+      return;
     }
-  }, [shapes, interaction]);
+    setViewShapes(shapes);
+    viewShapesRef.current=shapes;
+  }, [shapes]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
