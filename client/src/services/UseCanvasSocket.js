@@ -20,20 +20,33 @@ export function useCanvasSocket() {
           break;
         case "ADD":
           setShapes(prev => [...prev, data.object]);
+          //リアルタイムに履歴を書く
+          if (data.history) {
+            setHistory(prev => [...prev, data.history]);
+          }
           break;
         case "UPDATE":
           // 指定したIDの図形を更新する
           setShapes(prev => prev.map(shape =>
             shape.id === data.id ? { ...shape, ...data.changes } : shape
           ));
+          if (data.history) {
+            setHistory(prev => [...prev, data.history]);
+          }
           break;
         case "DELETE":
           // 指定したIDの図形を削除する
           setShapes(prev => prev.filter(shape => shape.id !== data.id));
+          if (data.history) {
+            setHistory(prev => [...prev, data.history]);
+          }
           break;
         case "CLEAR":
           // 全削除
           setShapes([]);
+          if (data.history) {
+            setHistory(prev => [...prev, data.history]);
+          }
           break;
         default:
           console.log("不明なアクション:", data.action);
