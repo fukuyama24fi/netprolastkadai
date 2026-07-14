@@ -18,6 +18,9 @@ const App = () => {
     updateRect,
     deleteRect,
     clearCanvas,
+    undo,           //Undo関数を取得
+    redo,           //Redo関数を取得
+    jumpToHistory,  //履歴ジャンプ関数を取得
   } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -45,7 +48,7 @@ const App = () => {
       behavior: "smooth",
       block: "end",
     });
-  },[history]);
+  }, [history]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -64,11 +67,6 @@ const App = () => {
       return shape.y + shape.height + 400;
     })
   );
-
- const handleDeleteSelected = () => {
-  if (!selectedId) {
-    return;
-  }
 
   const targetId = selectedId;
 
@@ -91,7 +89,7 @@ const App = () => {
   deleteRect(targetId);
 };
 
-  const autoScrollMain = (event) => {
+const autoScrollMain = (event) => {
   const main = mainRef.current;
 
   if (!main) {
@@ -124,36 +122,36 @@ const App = () => {
   }
 };
 
-  const handleAddRect = () => {
-    addRect();
-  };
+const handleAddRect = () => {
+  addRect();
+};
 
-  const handleClearCanvas = () => {
-    clearCanvas();
-    setSelectedId(null);
-  };
+const handleClearCanvas = () => {
+  clearCanvas();
+  setSelectedId(null);
+};
 
-  const handleDeleteSelected = () => {
-    if (!selectedId) {
-      return;
-    }
+const handleDeleteSelected = () => {
+  if (!selectedId) {
+    return;
+  }
 
-    const targetId = selectedId;
+  const targetId = selectedId;
 
-    setViewShapes((prev)=>{
-      const next = prev.filter((shape)=>{
-        return shape.id !== targetId;
-      });
-
-      viewShapesRef.current = next;
+  setViewShapes((prev) => {
+    const next = prev.filter((shape) => {
+      return shape.id !== targetId;
     });
 
-    
-    setSelectedId(null);
-    setInteraction(null);
-    deleteRect(selectedId);
-    
-  };
+    viewShapesRef.current = next;
+  });
+
+
+  setSelectedId(null);
+  setInteraction(null);
+  deleteRect(selectedId);
+
+};
 
 useEffect(() => {
   const handleKeyDown = (event) => {
@@ -197,174 +195,194 @@ useEffect(() => {
   };
 }, [selectedId, deleteRect]);
 
-  const handleColorChange = (event) => {
-    if (!selectedId) {
+const handleColorChange = (event) => {
+  if (!selectedId) {
+    return;
+  }
+
+  const fill = event.target.value;
+
+  updateShapeLocal(selectedId, {
+    fill,
+  });
+
+  updateRect(selectedId, {
+    fill,
+  });
+};
+
+//Undoボタン処理
+const handleUndo = () => {
+  undo();
+};
+
+//Redoボタン処理
+const handleRedo = () => {
+  redo();
+};
+
+//履歴クリック時の処理（ジャンプ）
+const handleHistoryClick = (historyItem) => {
+  jumpToHistory(historyItem.id);
+};
+
+
+const startDrag = (event, shape) => {
+  setSelectedId(shape.id);
+
+  didMoveRef.current = false;
+
+  const shapeRect = event.currentTarget.getBoundingClientRect();
+
+  setInteraction({
+    mode: "drag",
+    id: shape.id,
+    offsetX: event.clientX - shapeRect.left,
+    offsetY: event.clientY - shapeRect.top,
+  });
+
+  event.preventDefault();
+};
+
+const startResize = (event, shape) => {
+  event.stopPropagation();
+
+  setSelectedId(shape.id);
+  didMoveRef.current = false;
+
+  setInteraction({
+    mode: "resize",
+    id: shape.id,
+    startX: event.clientX,
+    startY: event.clientY,
+    startWidth: shape.width,
+    startHeight: shape.height,
+  });
+
+  event.preventDefault();
+};
+
+useEffect(() => {
+  if (!interaction) {
+    return;
+  }
+
+  const handleMouseMove = (event) => {
+    const canvas = canvasRef.current;
+
+
+    if (!canvas) {
       return;
     }
 
-    const fill = event.target.value;
+    didMoveRef.current = true;
+    autoScrollMain(event);
 
-    updateShapeLocal(selectedId, {
-      fill,
-    });
+    const canvasRect = canvas.getBoundingClientRect();
 
-    updateRect(selectedId, {
-      fill,
-    });
-  };
+    if (interaction.mode === "drag") {
+      const newX =
+        event.clientX - canvasRect.left - interaction.offsetX;
 
-   //Undoボタン処理
-  const handleUndo = () => {
-    undo();
-  };
+      const newY =
+        event.clientY - canvasRect.top - interaction.offsetY;
 
-  //Redoボタン処理
-  const handleRedo = () => {
-    redo();
-  };
-
-  //履歴クリック時の処理（ジャンプ）
-  const handleHistoryClick = (historyItem) => {
-    jumpToHistory(historyItem.id);
-  };
-
-
-  const startDrag = (event, shape) => {
-    setSelectedId(shape.id);
-
-    didMoveRef.current = false;
-
-    const shapeRect = event.currentTarget.getBoundingClientRect();
-
-    setInteraction({
-      mode: "drag",
-      id: shape.id,
-      offsetX: event.clientX - shapeRect.left,
-      offsetY: event.clientY - shapeRect.top,
-    });
-
-    event.preventDefault();
-  };
-
-  const startResize = (event, shape) => {
-    event.stopPropagation();
-
-    setSelectedId(shape.id);
-    didMoveRef.current = false;
-
-    setInteraction({
-      mode: "resize",
-      id: shape.id,
-      startX: event.clientX,
-      startY: event.clientY,
-      startWidth: shape.width,
-      startHeight: shape.height,
-    });
-
-    event.preventDefault();
-  };
-
-  useEffect(() => {
-    if (!interaction) {
-      return;
+      updateShapeLocal(interaction.id, {
+        x: newX,
+        y: newY,
+      });
     }
 
-    const handleMouseMove = (event) => {
-      const canvas = canvasRef.current;
+    if (interaction.mode === "resize") {
+      const diffX = event.clientX - interaction.startX;
+      const diffY = event.clientY - interaction.startY;
 
+      const newWidth = Math.max(
+        30,
+        interaction.startWidth + diffX
+      );
 
-      if (!canvas) {
-        return;
-      }
+      const newHeight = Math.max(
+        30,
+        interaction.startHeight + diffY
+      );
 
-      didMoveRef.current = true;
-      autoScrollMain(event);
+      updateShapeLocal(interaction.id, {
+        width: newWidth,
+        height: newHeight,
+      });
+    }
+  };
 
-      const canvasRect = canvas.getBoundingClientRect();
+  const handleMouseUp = () => {
 
+    if (!didMoveRef.current) {
+      setInteraction(null);
+      return
+    }
+    const targetShape = viewShapesRef.current.find((shape) => {
+      return shape.id === interaction.id;
+    });
+
+    if (targetShape) {
       if (interaction.mode === "drag") {
-        const newX =
-          event.clientX - canvasRect.left - interaction.offsetX;
-
-        const newY =
-          event.clientY - canvasRect.top - interaction.offsetY;
-
-        updateShapeLocal(interaction.id, {
-          x: newX,
-          y: newY,
+        updateRect(targetShape.id, {
+          x: targetShape.x,
+          y: targetShape.y,
         });
       }
 
       if (interaction.mode === "resize") {
-        const diffX = event.clientX - interaction.startX;
-        const diffY = event.clientY - interaction.startY;
-
-        const newWidth = Math.max(
-          30,
-          interaction.startWidth + diffX
-        );
-
-        const newHeight = Math.max(
-          30,
-          interaction.startHeight + diffY
-        );
-
-        updateShapeLocal(interaction.id, {
-          width: newWidth,
-          height: newHeight,
+        updateRect(targetShape.id, {
+          width: targetShape.width,
+          height: targetShape.height,
         });
       }
-    };
+    }
 
-    const handleMouseUp = () => {
-
-      if (!didMoveRef.current) {
-        setInteraction(null);
-        return
-      }
-      const targetShape = viewShapesRef.current.find((shape) => {
-        return shape.id === interaction.id;
-      });
-
-      if (targetShape) {
-        if (interaction.mode === "drag") {
-          updateRect(targetShape.id, {
-            x: targetShape.x,
-            y: targetShape.y,
-          });
-        }
-
-        if (interaction.mode === "resize") {
-          updateRect(targetShape.id, {
-            width: targetShape.width,
-            height: targetShape.height,
-          });
-        }
-      }
-
-      setInteraction(null);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [interaction, updateRect]);
-
-  //履歴のオブジェクトを日本語に変換するよ
-  const formatObjectLabel = (h) => {
-    const type = h.changes?.type;
-    if (type) return TYPE_LABELS[type] || type; //対応表に無ければtypeそのまま表示
-    return h.objectId ? h.objectId.slice(0, 8) : ""; //typeが無い古いデータ用の保険です
+    setInteraction(null);
   };
 
-  return (
+  window.addEventListener("mousemove", handleMouseMove);
+  window.addEventListener("mouseup", handleMouseUp);
+
+  return () => {
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("mouseup", handleMouseUp);
+  };
+}, [interaction, updateRect]);
+
+//履歴のオブジェクトを日本語に変換するよ
+const formatObjectLabel = (h) => {
+  const type = h.changes?.type;
+  if (type) return TYPE_LABELS[type] || type; //対応表に無ければtypeそのまま表示
+  return h.objectId ? h.objectId.slice(0, 8) : ""; //typeが無い古いデータ用の保険です
+};
+
+return (
     <div className="app">
       <aside className="tool">
         <h1>Pikva</h1>
+
+        <div className="history-buttons">
+         <button
+          type="button"
+          className="icon-button"
+          onClick={handleUndo}
+          title="Undo"
+         >
+            ↶
+          </button>
+
+          <button
+          type="button"
+          className="icon-button"
+          onClick={handleUndo}
+          title="Undo"
+         >
+             ↷
+          </button>
+        </div>
 
         <button type="button" onClick={handleAddRect}>
           四角形を追加
@@ -390,7 +408,7 @@ useEffect(() => {
         <button type="button" onClick={handleClearCanvas}>
           全て消去
         </button>
-      </aside>
+      </aside >
 
       <main ref={mainRef} className="main">
         <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
@@ -435,9 +453,15 @@ useEffect(() => {
           />
         </div>
 
-        <ul className="history-list">
+         <ul className="history-list">
           {history.map((h, i) => (
-            <li key={i}>
+            <li 
+              key={i}
+              //履歴クリックで該当の時点まで巻き戻し
+              onClick={() => handleHistoryClick(h)}
+              style={{ cursor: "pointer" }}
+              title="クリックでこの時点まで巻き戻します"
+            >
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
               {h.objectId && `（${formatObjectLabel(h)}）`}
               {" by "}
@@ -447,7 +471,7 @@ useEffect(() => {
           <li ref={historyEndRef} className="history-end"/>
         </ul>
       </section>
-    </div>
+    </div >
   );
 };
 
