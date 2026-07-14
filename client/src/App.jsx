@@ -27,6 +27,8 @@ const App = () => {
   const canvasRef = useRef(null);
   const viewShapesRef = useRef([]);
   const didMoveRef = useRef(false);
+  const mainRef = useRef(null);
+  const historyEndRef = useRef(null);
 
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
@@ -37,6 +39,13 @@ const App = () => {
     setViewShapes(shapes);
     viewShapesRef.current = shapes;
   }, [shapes]);
+
+  useEffect(() => {
+    historyEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  },[history]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -75,6 +84,39 @@ const App = () => {
     });
   };
 
+  const autoScrollMain = (event) => {
+  const main = mainRef.current;
+
+  if (!main) {
+    return;
+  }
+
+  const rect = main.getBoundingClientRect();
+
+  const edgeSize = 80;
+  const scrollSpeed = 24;
+
+  // 右端に近い
+  if (event.clientX > rect.right - edgeSize) {
+    main.scrollLeft += scrollSpeed;
+  }
+
+  // 左端に近い
+  if (event.clientX < rect.left + edgeSize) {
+    main.scrollLeft -= scrollSpeed;
+  }
+
+  // 下端に近い
+  if (event.clientY > rect.bottom - edgeSize) {
+    main.scrollTop += scrollSpeed;
+  }
+
+  // 上端に近い
+  if (event.clientY < rect.top + edgeSize) {
+    main.scrollTop -= scrollSpeed;
+  }
+};
+
   const handleAddRect = () => {
     addRect();
   };
@@ -89,9 +131,50 @@ const App = () => {
       return;
     }
 
-    deleteRect(selectedId);
+    const targetId = selectedId;
+
+    setViewShapes((prev)=>{
+      const next = prev.filter((shape)=>{
+        return shape.id !== targetId;
+      });
+
+      viewShapesRef.current = next;
+    });
+
+    
     setSelectedId(null);
+    setInteraction(null);
+    deleteRect(selectedId);
+    
   };
+
+ useEffect(() => {
+  const handleKeyDown = (event) => {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+
+    if (!selectedId) {
+      return;
+    }
+
+    // 入力欄を編集中なら削除しない
+    const tagName = document.activeElement?.tagName;
+
+    if (tagName === "INPUT" || tagName === "TEXTAREA") {
+      return;
+    }
+
+    event.preventDefault();
+    handleDeleteSelected();
+  };
+
+  window.addEventListener("keydown", handleKeyDown);
+
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [selectedId]);
 
   const handleColorChange = (event) => {
     if (!selectedId) {
@@ -159,6 +242,7 @@ const App = () => {
       }
 
       didMoveRef.current = true;
+      autoScrollMain(event);
 
       const canvasRect = canvas.getBoundingClientRect();
 
@@ -272,7 +356,7 @@ const App = () => {
         </button>
       </aside>
 
-      <main className="main">
+      <main ref={mainRef} className="main">
         <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeigth}px` }}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
@@ -324,6 +408,7 @@ const App = () => {
               {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
+          <li ref={historyEndRef} className="history-end"/>
         </ul>
       </section>
     </div>

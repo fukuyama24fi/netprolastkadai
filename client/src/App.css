@@ -180,3 +180,8 @@ body {
 .history-list li {
   margin-bottom: 6px;
 }
+
+.history-end{
+  height: 1px;
+  list-style: none;
+}
