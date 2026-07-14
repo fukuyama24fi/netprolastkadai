@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
+//履歴表示用
+const TYPE_LABELS = {
+  rect: "四角形",
+  // circle: "円", text: "テキスト" など今後増えたらここに追加
+};
+
 const App = () => {
   const {
     shapes,
@@ -228,6 +234,13 @@ const App = () => {
     };
   }, [interaction, updateRect]);
 
+  //履歴のオブジェクトを日本語に変換するよ
+  const formatObjectLabel = (h) => {
+    const type = h.changes?.type;
+    if (type) return TYPE_LABELS[type] || type; //対応表に無ければtypeそのまま表示
+    return h.objectId ? h.objectId.slice(0, 8) : ""; //typeが無い古いデータ用の保険です
+  };
+
   return (
     <div className="app">
       <aside className="tool">
@@ -306,7 +319,7 @@ const App = () => {
           {history.map((h, i) => (
             <li key={i}>
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
-              {h.objectId && `（${h.objectId.slice(0, 8)}）`}
+              {h.objectId && `（${formatObjectLabel(h)}）`}
               {" by "}
               {h.userName || h.userId?.slice(0, 8)}
             </li>

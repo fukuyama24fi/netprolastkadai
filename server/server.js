@@ -152,6 +152,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         action: "ADD",
                         objectId: data.object.id,
                         userId,
+                        userName,
                         changes: data.object
                     });
 
@@ -205,7 +206,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         action: "UPDATE",
                         objectId: data.id,
                         userId,
-                        changes: data.changes
+                        userName,
+                        changes:  { ...data.changes, type: obj.type } //形を履歴に表示
                     });
                     //全員に通知
                     io.emit("message", { ...data, history: historyEntry });
@@ -226,7 +228,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         action: "DELETE",
                         objectId: data.id,
                         userId,
-                        changes: null
+                        userName,
+                        changes: obj ? { type: obj.type } : null //消したタイプを履歴に残すため
                     });
                     io.emit("message", { ...data, history: historyEntry });
                 } catch (err) {
@@ -243,6 +246,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         action: "CLEAR",
                         objectId: null,
                         userId,
+                        userName,
                         changes: null
                     });
                     io.emit("message", { ...data, history: historyEntry });
