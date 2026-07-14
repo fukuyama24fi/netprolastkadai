@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useStatef, useCallback } from "react";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
