@@ -14,8 +14,12 @@ export function useCanvasSocket() {
 
       switch (data.action) {
         case "INIT": {
-          setShapes(data.objects || []);
-          setHistory(data.history || []);
+          //INIT時は一度だけ状態を更新（バッチ処理）
+          setShapes(data.objects || []); 
+          // 履歴がついてきたら更新
+          if (data.history) {
+            setHistory(data.history || []);
+          }
           break;
         }
 
@@ -102,31 +106,22 @@ export function useCanvasSocket() {
     };
   }, []);
 
-  const addHistoryIfNeeded = (newHistory) => {
+  //履歴追加の重複チェック
+  const addHistoryIfNeeded = useCallback((newHistory) => {
     if (!newHistory) {
       return;
     }
 
     setHistory((prev) => {
-      const key =
-        newHistory.id ||
-        `${newHistory.action}-${newHistory.objectId}-${newHistory.createdAt}`;
-
-      const exists = prev.some((item) => {
-        const itemKey =
-          item.id ||
-          `${item.action}-${item.objectId}-${item.createdAt}`;
-
-        return itemKey === key;
-      });
-
-      if (exists) {
+      // 同じIDの履歴がすでに存在しているかチェック
+      if (newHistory.id && prev.some(item => item.id === newHistory.id)) {
+        console.log("重複履歴を無視:", newHistory.id);
         return prev;
       }
 
       return [...prev, newHistory];
     });
-  };
+  }, []);
 
   const setUserName = (name) => {
     const nextName = name.trim() || "名無し";
@@ -194,10 +189,11 @@ export function useCanvasSocket() {
     socketService.redo();
   };
 
-  //履歴ジャンプ（履歴クリック時・N回ループ + 最終状態配信）
-  const jumpToHistory = (historyId) => {
+  // 非同期待機なし（サーバーが INIT で応答）
+  const jumpToHistory = useCallback((historyId) => {
+    console.log("履歴ジャンプ開始:", historyId);
     socketService.jumpToHistory(historyId);
-  };
+  }, []);
 
   return {
     shapes,

@@ -581,29 +581,28 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             }
                         }
 
-                        //ジャンプ自体も履歴に記録
-                        await saveEditHistory({
+                        //全ての逆操作を一度に履歴に記録（1件の統合UNDO として）
+                        const undoEntry = await saveEditHistory({
                             action: "UNDO",
-                            objectId: entry.object_id,
+                            objectId: null, // 複数オブジェクトなので null
                             userId,
                             userName,
                             before: null,
                             after: null,
-                            revertedEntryId: entry.id
+                            revertedEntryId: targetHistoryId // ジャンプ先のIDを指す
                         });
+
+                        //ループが終わったら、最終状態をINIT形式で1回だけ配信
+                        io.emit("message", {
+                            action: "INIT",
+                            objects: canvasState
+                        });
+
+                    } catch (err) {
+                        console.error("JUMP_TO_HISTORY処理失敗:", err);
                     }
-
-                    //ループが終わったら、最終状態をINIT形式で1回だけ配信
-                    io.emit("message", {
-                        action: "INIT",
-                        objects: canvasState
-                    });
-
-                } catch (err) {
-                    console.error("JUMP_TO_HISTORY処理失敗:", err);
+                    break;
                 }
-                break;
-            }
 
             default:
                 console.log("存在しない操作です", data.action);
