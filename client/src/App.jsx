@@ -28,6 +28,7 @@ const App = () => {
   const viewShapesRef = useRef([]);
   const didMoveRef = useRef(false);
   const mainRef = useRef(null);
+  const historyEndRef = useRef(null);
 
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
@@ -38,6 +39,13 @@ const App = () => {
     setViewShapes(shapes);
     viewShapesRef.current = shapes;
   }, [shapes]);
+
+  useEffect(() => {
+    historyEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  },[history]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -400,6 +408,7 @@ const App = () => {
               {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
+          <li ref={historyEndRef} className="history-end"/>
         </ul>
       </section>
     </div>
