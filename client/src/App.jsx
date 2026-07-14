@@ -58,31 +58,38 @@ const App = () => {
     })
   );
 
-  const canvasHeigth = Math.max(
+  const canvasHeight = Math.max(
     1400,
     ...viewShapes.map((shape) => {
       return shape.y + shape.height + 400;
     })
   );
 
-  const updateShapeLocal = (id, changes) => {
-    setViewShapes((prev) => {
-      const next = prev.map((shape) => {
-        if (shape.id !== id) {
-          return shape;
-        }
+ const handleDeleteSelected = () => {
+  if (!selectedId) {
+    return;
+  }
 
-        return {
-          ...shape,
-          ...changes,
-        };
-      });
+  const targetId = selectedId;
 
-      viewShapesRef.current = next;
-
-      return next;
+  // 先に画面上から消す
+  setViewShapes((prev) => {
+    const next = prev.filter((shape) => {
+      return shape.id !== targetId;
     });
-  };
+
+    viewShapesRef.current = next;
+
+    return next;
+  });
+
+  // 選択状態を解除
+  setSelectedId(null);
+  setInteraction(null);
+
+  // サーバーへ削除通知
+  deleteRect(targetId);
+};
 
   const autoScrollMain = (event) => {
   const main = mainRef.current;
@@ -148,7 +155,7 @@ const App = () => {
     
   };
 
- useEffect(() => {
+useEffect(() => {
   const handleKeyDown = (event) => {
     if (event.key !== "Delete" && event.key !== "Backspace") {
       return;
@@ -158,7 +165,6 @@ const App = () => {
       return;
     }
 
-    // 入力欄を編集中なら削除しない
     const tagName = document.activeElement?.tagName;
 
     if (tagName === "INPUT" || tagName === "TEXTAREA") {
@@ -166,7 +172,22 @@ const App = () => {
     }
 
     event.preventDefault();
-    handleDeleteSelected();
+
+    const targetId = selectedId;
+
+    setViewShapes((prev) => {
+      const next = prev.filter((shape) => {
+        return shape.id !== targetId;
+      });
+
+      viewShapesRef.current = next;
+
+      return next;
+    });
+
+    setSelectedId(null);
+    setInteraction(null);
+    deleteRect(targetId);
   };
 
   window.addEventListener("keydown", handleKeyDown);
@@ -174,7 +195,7 @@ const App = () => {
   return () => {
     window.removeEventListener("keydown", handleKeyDown);
   };
-}, [selectedId]);
+}, [selectedId, deleteRect]);
 
   const handleColorChange = (event) => {
     if (!selectedId) {
@@ -357,7 +378,7 @@ const App = () => {
       </aside>
 
       <main ref={mainRef} className="main">
-        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeigth}px` }}>
+        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
