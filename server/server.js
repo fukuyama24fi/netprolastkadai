@@ -59,7 +59,6 @@ async function saveEditHistory({ action, objectId, userId, userName, before, aft
 // 直近100件だけ取得（全件だと数が増えたとき重くなるので）
 async function sendHistory(socket) {
     try {
-        //履歴を取得（元の履歴行がある場合はJOINして取得）
         const result = await pool.query(
             `SELECT 
                 h.id,
@@ -78,15 +77,15 @@ async function sendHistory(socket) {
              LIMIT 100`
         );
         
-        // JSONBをパースして、履歴一覧に合わせた形式に変換
+        //psqlのpgライブラリはJSONBを自動的にオブジェクトに変換する
         const formattedHistory = result.rows.map(row => ({
             id: row.id,
             action: row.action,
             objectId: row.objectId,
             userId: row.userId,
             userName: row.userName,
-            before: row.before ? JSON.parse(row.before) : null,
-            after: row.after ? JSON.parse(row.after) : null,
+            before: row.before,
+            after: row.after,
             revertedEntryId: row.revertedEntryId,
             originalAction: row.originalAction,
             createdAt: row.createdAt
@@ -94,7 +93,7 @@ async function sendHistory(socket) {
         
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-            history: formattedHistory.reverse() //古い順に
+            history: formattedHistory.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
