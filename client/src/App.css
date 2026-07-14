@@ -160,6 +160,34 @@ body {
   user-select: none;
 }
 
+.shape-body {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 円 */
+.shape.circle .shape-body {
+  border-radius: 50%;
+}
+
+/* 三角形 */
+.shape.triangle .shape-body {
+  clip-path: polygon(
+    50% 0%,
+    100% 100%,
+    0% 100%
+  );
+}
+
+/* テキスト */
+.shape.text .shape-body {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
 /* 選択中の図形 */
 .shape.selected {
   outline: 2px solid #4d11bd;

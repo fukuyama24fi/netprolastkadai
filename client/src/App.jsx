@@ -448,32 +448,52 @@ const App = () => {
       <main ref={mainRef} className="main">
         <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
           {viewShapes.map((shape) => {
-            const isSelected = shape.id === selectedId;
+  const isSelected = shape.id === selectedId;
+  const shapeType = shape.type || "rect";
+  const isText = shapeType === "text";
 
-            return (
-              <div
-                key={shape.id}
-                className={[
-                  "shape",
-                  shape.type || "rect",
-                  isSelected ? "selected" : "",
-                ].join(" ")}
-                onMouseDown={(event) => startDrag(event, shape)}
-                style={{
-                  left: `${shape.x}px`,
-                  top: `${shape.y}px`,
-                  width: `${shape.width}px`,
-                  height: `${shape.height}px`,
-                  backgroundColor: shape.fill,
-                }}
-              >
-                <div
-                  className="resize-handle"
-                  onMouseDown={(event) => startResize(event, shape)}
-                />
-              </div>
-            );
-          })}
+  return (
+    <div
+      key={shape.id}
+      className={[
+        "shape",
+        shapeType,
+        isSelected ? "selected" : "",
+      ].join(" ")}
+      onMouseDown={(event) => startDrag(event, shape)}
+      style={{
+        left: `${shape.x}px`,
+        top: `${shape.y}px`,
+        width: `${shape.width}px`,
+        height: `${shape.height}px`,
+      }}
+    >
+      <div
+        className="shape-body"
+        style={{
+          backgroundColor: isText
+            ? "transparent"
+            : shape.fill,
+          color: isText
+            ? shape.fill
+            : undefined,
+          fontSize: isText
+            ? `${shape.fontSize || 24}px`
+            : undefined,
+        }}
+      >
+        {isText ? shape.text || "テキスト" : null}
+      </div>
+
+      <div
+        className="resize-handle"
+        onMouseDown={(event) =>
+          startResize(event, shape)
+        }
+      />
+    </div>
+  );
+})}
         </div>
       </main>
 
