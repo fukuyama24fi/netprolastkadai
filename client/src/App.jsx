@@ -26,20 +26,51 @@ const App = () => {
     jumpToHistory,  //履歴ジャンプ関数を取得
   } = useCanvasSocket();
 
- const [viewShapes, setViewShapes] = useState([]);
-const [selectedId, setSelectedId] = useState(null);
-const [interaction, setInteraction] = useState(null);
+  const [viewShapes, setViewShapes] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [interaction, setInteraction] = useState(null);
 
-const [editingId, setEditingId] = useState(null);
-const [draftText, setDraftText] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [draftText, setDraftText] = useState("");
 
-const [fileName, setFileName] = useState("pikva-canvas");
-const canvasRef = useRef(null);
-const viewShapesRef = useRef([]);
-const didMoveRef = useRef(false);
-const mainRef = useRef(null);
-const historyEndRef = useRef(null);
-const cancelTextEditRef = useRef(false);
+  const [fileName, setFileName] = useState("pikva-canvas");
+  const canvasRef = useRef(null);
+  const viewShapesRef = useRef([]);
+  const didMoveRef = useRef(false);
+  const mainRef = useRef(null);
+  const historyEndRef = useRef(null);
+  const cancelTextEditRef = useRef(false);
+
+  //キャンバスのデータを JSON ファイルとして保存
+  const handleSaveFile = useCallback(() => {
+    const saveData = {
+      version: 1,
+      fileName: fileName.trim() || "pikva-canvas",
+      savedAt: new Date().toISOString(),
+      objects: viewShapes,
+    };
+
+    const json = JSON.stringify(saveData, null, 2);
+
+    const blob = new Blob([json], {
+      type: "application/json",
+    });
+
+    const downloadUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = downloadUrl;
+    link.download = `${fileName.trim() || "pikva-canvas"
+      }.json`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(downloadUrl);
+  }, [fileName, viewShapes]);
+
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
     // ドラッグ中・リサイズ中は、操作中の見た目を優先する
@@ -127,7 +158,7 @@ const cancelTextEditRef = useRef(false);
     }
   }, []);
 
-  //handleAddRectの代わり
+
   const handleAddShape = useCallback((type) => { //useCallbackでメモ化
     addShape(type);
   }, [addShape]);
@@ -159,8 +190,8 @@ const cancelTextEditRef = useRef(false);
     setSelectedId(null);
     setInteraction(null);
 
-  // サーバーへ削除通知
-  deleteRect(targetId);
+    // サーバーへ削除通知
+    deleteRect(targetId);
 
   }, [selectedId, deleteRect]);
 
@@ -208,62 +239,62 @@ const cancelTextEditRef = useRef(false);
   };
 
   // テキストの編集を開始
-const startTextEditing = useCallback((event, shape) => {
-  event.stopPropagation();
+  const startTextEditing = useCallback((event, shape) => {
+    event.stopPropagation();
 
-  if (shape.type !== "text") {
-    return;
-  }
-
-  cancelTextEditRef.current = false;
-
-  setSelectedId(shape.id);
-  setInteraction(null);
-  setDraftText(shape.text || "");
-  setEditingId(shape.id);
-}, []);
-
-// 編集内容を保存
-const finishTextEditing = useCallback(
-  (shapeId) => {
-    // Escキーでキャンセルされた場合
-    if (cancelTextEditRef.current) {
-      cancelTextEditRef.current = false;
-      setEditingId(null);
+    if (shape.type !== "text") {
       return;
     }
 
-    updateShapeLocal(shapeId, {
-      text: draftText,
-    });
+    cancelTextEditRef.current = false;
 
-    updateRect(shapeId, {
-      text: draftText,
-    });
+    setSelectedId(shape.id);
+    setInteraction(null);
+    setDraftText(shape.text || "");
+    setEditingId(shape.id);
+  }, []);
 
-    setEditingId(null);
-  },
-  [draftText, updateShapeLocal, updateRect]
-);
+  // 編集内容を保存
+  const finishTextEditing = useCallback(
+    (shapeId) => {
+      // Escキーでキャンセルされた場合
+      if (cancelTextEditRef.current) {
+        cancelTextEditRef.current = false;
+        setEditingId(null);
+        return;
+      }
 
-// 編集中のキー操作
-const handleTextKeyDown = useCallback((event) => {
-  // Enterで保存
-  // Shift + Enterなら改行
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    event.currentTarget.blur();
-    return;
-  }
+      updateShapeLocal(shapeId, {
+        text: draftText,
+      });
 
-  // Escで変更をキャンセル
-  if (event.key === "Escape") {
-    event.preventDefault();
+      updateRect(shapeId, {
+        text: draftText,
+      });
 
-    cancelTextEditRef.current = true;
-    event.currentTarget.blur();
-  }
-}, []);
+      setEditingId(null);
+    },
+    [draftText, updateShapeLocal, updateRect]
+  );
+
+  // 編集中のキー操作
+  const handleTextKeyDown = useCallback((event) => {
+    // Enterで保存
+    // Shift + Enterなら改行
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.blur();
+      return;
+    }
+
+    // Escで変更をキャンセル
+    if (event.key === "Escape") {
+      event.preventDefault();
+
+      cancelTextEditRef.current = true;
+      event.currentTarget.blur();
+    }
+  }, []);
 
 
   //Undoボタン処理
@@ -287,7 +318,7 @@ const handleTextKeyDown = useCallback((event) => {
     setSelectedId(null);
     //サーバーに送信
     jumpToHistory(historyItem.id);
-  }, [jumpToHistory]); 
+  }, [jumpToHistory]);
 
 
   const startDrag = useCallback((event, shape) => {
@@ -378,36 +409,6 @@ const handleTextKeyDown = useCallback((event) => {
     };
 
 
-    const handleSaveFile = useCallback(() => {
-  const saveData = {
-    version: 1,
-    fileName: fileName.trim() || "pikva-canvas",
-    savedAt: new Date().toISOString(),
-    objects: viewShapes,
-  };
-
-  const json = JSON.stringify(saveData, null, 2);
-
-  const blob = new Blob([json], {
-    type: "application/json",
-  });
-
-  const downloadUrl = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-
-  link.href = downloadUrl;
-  link.download = `${
-    fileName.trim() || "pikva-canvas"
-  }.json`;
-
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  URL.revokeObjectURL(downloadUrl);
-}, [fileName, viewShapes]);
-
     const handleMouseUp = () => {
 
       if (!didMoveRef.current) {
@@ -456,243 +457,243 @@ const handleTextKeyDown = useCallback((event) => {
   return (
     <div className="app">
       <header className="app-header">
-  <strong className="app-header-title">
-    Pikva
-  </strong>
+        <strong className="app-header-title">
+          Pikva
+        </strong>
 
-  <input
-    type="text"
-    className="file-name-input"
-    value={fileName}
-    onChange={(event) => {
-      setFileName(event.target.value);
-    }}
-    placeholder="ファイル名"
-  />
-
-  <button type="button">
-    新規
-  </button>
-
-  <button type="button" onClick={handleSaveFile}>
-    保存
-  </button>
-
-  <button type="button">
-    開く
-  </button>
-
-  <button type="button">
-    PNG出力
-  </button>
-</header>
-    <div>
-      <aside className="tool">
-        <h1>Pikva</h1>
-
-        <div className="history-buttons">
-          <button
-            type="button"
-            className="icon-button"
-            onClick={handleUndo}
-            title="Undo"
-          >
-            ↶
-          </button>
-
-          <button
-            type="button"
-            className="icon-button"
-            onClick={handleRedo}
-            title="Undo"
-          >
-            ↷
-          </button>
-        </div>
-<div className="shape-buttons">
-  <button
-    type="button"
-    onClick={() => handleAddShape("rect")}
-  >
-    四角形を追加
-  </button>
-
-  <button
-    type="button"
-    onClick={() => handleAddShape("circle")}
-  >
-    円を追加
-  </button>
-
-  <button
-    type="button"
-    onClick={() => handleAddShape("triangle")}
-  >
-    三角形を追加
-  </button>
-
-  <button
-    type="button"
-    onClick={() => handleAddShape("text")}
-  >
-    テキストを追加
-  </button>
-</div>
-        
-
-        <label className="color-tool">
-          色
-          <input
-            type="color"
-            value={selectedShape?.fill || "#4f8cff"}
-            onChange={handleColorChange}
-          />
-        </label>
-
-        <button
-          type="button"
-          className="delete-button-main"
-          onClick={handleDeleteSelected}
-        >
-          選択中を削除
-        </button>
-
-        <button type="button" onClick={handleClearCanvas}>
-          全て消去
-        </button>
-      </aside >
-
-      <main ref={mainRef} className="main">
-        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
-         {viewShapes.map((shape) => {
-  const isSelected = shape.id === selectedId;
-  const shapeType = shape.type || "rect";
-  const isText = shapeType === "text";
-  const isEditing = editingId === shape.id;
-
-  return (
-    <div
-      key={shape.id}
-      className={[
-        "shape",
-        shapeType,
-        isSelected ? "selected" : "",
-        isEditing ? "editing" : "",
-      ].join(" ")}
-      onMouseDown={(event) => {
-        // テキスト編集中はドラッグを開始しない
-        if (isEditing) {
-          event.stopPropagation();
-          return;
-        }
-
-        startDrag(event, shape);
-      }}
-      onDoubleClick={(event) => {
-        startTextEditing(event, shape);
-      }}
-      style={{
-        left: `${shape.x}px`,
-        top: `${shape.y}px`,
-        width: `${shape.width}px`,
-        height: `${shape.height}px`,
-      }}
-    >
-      <div
-        className="shape-body"
-        style={{
-          backgroundColor: isText
-            ? "transparent"
-            : shape.fill,
-
-          color: isText
-            ? shape.fill
-            : undefined,
-
-          fontSize: isText
-            ? `${shape.fontSize || 24}px`
-            : undefined,
-        }}
-      >
-        {isText && isEditing ? (
-          <textarea
-            autoFocus
-            className="text-editor"
-            value={draftText}
-            onChange={(event) => {
-              setDraftText(event.target.value);
-            }}
-            onBlur={() => {
-              finishTextEditing(shape.id);
-            }}
-            onKeyDown={handleTextKeyDown}
-            onMouseDown={(event) => {
-              // textarea操作で図形のドラッグを開始しない
-              event.stopPropagation();
-            }}
-            onDoubleClick={(event) => {
-              event.stopPropagation();
-            }}
-          />
-        ) : null}
-
-        {isText && !isEditing ? (
-          <span className="text-value">
-            {shape.text || "テキスト"}
-          </span>
-        ) : null}
-      </div>
-
-      {!isEditing ? (
-        <div
-          className="resize-handle"
-          onMouseDown={(event) => {
-            startResize(event, shape);
+        <input
+          type="text"
+          className="file-name-input"
+          value={fileName}
+          onChange={(event) => {
+            setFileName(event.target.value);
           }}
+          placeholder="ファイル名"
         />
-      ) : null}
-    </div>
-  );
-})}
-        </div>
-      </main>
 
-      <section className="history-section">
-        <h2>編集履歴</h2>
+        <button type="button">
+          新規
+        </button>
 
-        <div className="user-settings">
-          表示名：
-          <input
-            defaultValue={userName}
-            onBlur={(e) => setUserName(e.target.value)}
-          />
-        </div>
+        <button type="button" onClick={handleSaveFile}>
+          保存
+        </button>
 
-        <ul className="history-list">
-          {history.map((h, i) => (
-            <li
-              key={i}
-              //履歴クリックで該当の時点まで巻き戻し
-              onClick={() => handleHistoryClick(h)}
-              style={{
-                cursor: interaction ? "not-allowed" : "pointer", // 🆕 インタラクション中は無効表示
-                opacity: interaction ? 0.5 : 1 // 🆕 薄くする
-              }}
-              title={
-                interaction
-                  ? "ドラッグ/リサイズ中は履歴ジャンプできません"
-                  : "クリックでこの時点まで巻き戻します"
-              }
+        <button type="button">
+          開く
+        </button>
+
+        <button type="button">
+          PNG出力
+        </button>
+      </header>
+      <div>
+        <aside className="tool">
+          <h1>Pikva</h1>
+
+          <div className="history-buttons">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={handleUndo}
+              title="Undo"
             >
-              {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
-              {h.objectId && `（${formatObjectLabel(h)}）`}
-              {" by "}
-              {h.userName || h.userId?.slice(0, 8)}
-            </li>
-          ))}
-          <li ref={historyEndRef} className="history-end" />
-        </ul>
-      </section>
+              ↶
+            </button>
+
+            <button
+              type="button"
+              className="icon-button"
+              onClick={handleRedo}
+              title="Undo"
+            >
+              ↷
+            </button>
+          </div>
+          <div className="shape-buttons">
+            <button
+              type="button"
+              onClick={() => handleAddShape("rect")}
+            >
+              四角形を追加
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAddShape("circle")}
+            >
+              円を追加
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAddShape("triangle")}
+            >
+              三角形を追加
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAddShape("text")}
+            >
+              テキストを追加
+            </button>
+          </div>
+
+
+          <label className="color-tool">
+            色
+            <input
+              type="color"
+              value={selectedShape?.fill || "#4f8cff"}
+              onChange={handleColorChange}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="delete-button-main"
+            onClick={handleDeleteSelected}
+          >
+            選択中を削除
+          </button>
+
+          <button type="button" onClick={handleClearCanvas}>
+            全て消去
+          </button>
+        </aside >
+
+        <main ref={mainRef} className="main">
+          <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
+            {viewShapes.map((shape) => {
+              const isSelected = shape.id === selectedId;
+              const shapeType = shape.type || "rect";
+              const isText = shapeType === "text";
+              const isEditing = editingId === shape.id;
+
+              return (
+                <div
+                  key={shape.id}
+                  className={[
+                    "shape",
+                    shapeType,
+                    isSelected ? "selected" : "",
+                    isEditing ? "editing" : "",
+                  ].join(" ")}
+                  onMouseDown={(event) => {
+                    // テキスト編集中はドラッグを開始しない
+                    if (isEditing) {
+                      event.stopPropagation();
+                      return;
+                    }
+
+                    startDrag(event, shape);
+                  }}
+                  onDoubleClick={(event) => {
+                    startTextEditing(event, shape);
+                  }}
+                  style={{
+                    left: `${shape.x}px`,
+                    top: `${shape.y}px`,
+                    width: `${shape.width}px`,
+                    height: `${shape.height}px`,
+                  }}
+                >
+                  <div
+                    className="shape-body"
+                    style={{
+                      backgroundColor: isText
+                        ? "transparent"
+                        : shape.fill,
+
+                      color: isText
+                        ? shape.fill
+                        : undefined,
+
+                      fontSize: isText
+                        ? `${shape.fontSize || 24}px`
+                        : undefined,
+                    }}
+                  >
+                    {isText && isEditing ? (
+                      <textarea
+                        autoFocus
+                        className="text-editor"
+                        value={draftText}
+                        onChange={(event) => {
+                          setDraftText(event.target.value);
+                        }}
+                        onBlur={() => {
+                          finishTextEditing(shape.id);
+                        }}
+                        onKeyDown={handleTextKeyDown}
+                        onMouseDown={(event) => {
+                          // textarea操作で図形のドラッグを開始しない
+                          event.stopPropagation();
+                        }}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                      />
+                    ) : null}
+
+                    {isText && !isEditing ? (
+                      <span className="text-value">
+                        {shape.text || "テキスト"}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {!isEditing ? (
+                    <div
+                      className="resize-handle"
+                      onMouseDown={(event) => {
+                        startResize(event, shape);
+                      }}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </main>
+
+        <section className="history-section">
+          <h2>編集履歴</h2>
+
+          <div className="user-settings">
+            表示名：
+            <input
+              defaultValue={userName}
+              onBlur={(e) => setUserName(e.target.value)}
+            />
+          </div>
+
+          <ul className="history-list">
+            {history.map((h, i) => (
+              <li
+                key={i}
+                //履歴クリックで該当の時点まで巻き戻し
+                onClick={() => handleHistoryClick(h)}
+                style={{
+                  cursor: interaction ? "not-allowed" : "pointer", // 🆕 インタラクション中は無効表示
+                  opacity: interaction ? 0.5 : 1 // 🆕 薄くする
+                }}
+                title={
+                  interaction
+                    ? "ドラッグ/リサイズ中は履歴ジャンプできません"
+                    : "クリックでこの時点まで巻き戻します"
+                }
+              >
+                {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
+                {h.objectId && `（${formatObjectLabel(h)}）`}
+                {" by "}
+                {h.userName || h.userId?.slice(0, 8)}
+              </li>
+            ))}
+            <li ref={historyEndRef} className="history-end" />
+          </ul>
+        </section>
       </div>
     </div >
   );
