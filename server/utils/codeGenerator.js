@@ -33,3 +33,6 @@ function generateHTMLCode(objects) {
 </body>
 </html>`;
 }
+
+// 他のファイルで使えるように export
+export { generateHTMLCode };
