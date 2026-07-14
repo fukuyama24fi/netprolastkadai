@@ -123,9 +123,10 @@ const App = () => {
     }
   }, []);
 
-  const handleAddRect = useCallback((type) => { //useCallbackでメモ化
-    addRect(type);
-  }, [addRect]);
+  //handleAddRectの代わり
+  const handleAddShape = useCallback((type) => { //useCallbackでメモ化
+    addShape(type);
+  }, [addShape]);
 
   const handleClearCanvas = useCallback(() => { //useCallbackでメモ化
     clearCanvas();
