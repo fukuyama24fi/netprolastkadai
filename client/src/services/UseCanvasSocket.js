@@ -195,3 +195,11 @@ export function useCanvasSocket() {
     clearCanvas,
   };
 }
+
+const undo = () => {
+    socket.emit("message", { action: "UNDO", userId });
+};
+
+const redo = () => {
+    socket.emit("message", { action: "REDO", userId });
+};
