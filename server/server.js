@@ -107,6 +107,24 @@ async function sendHistory(socket) {
     }
 }
 
+// 履歴一覧を「今の全件」の状態で全クライアントに同期するヘルパー
+// pointerがどこにあるかに関係なく、historyList自体が実際に短くなっていない限り全部送る
+function broadcastHistory() {
+    io.emit("message", {
+        action: "HISTORY_RESPONSE",
+        history: historyList.map(h => ({
+            id: h.id,
+            action: h.action,
+            objectId: h.objectId,
+            userId: h.userId,
+            userName: h.userName,
+            before: h.before,
+            after: h.after,
+            createdAt: h.createdAt
+        }))
+    });
+}
+
 //historyListをDBから再読み込みする関数
 //DBは正しく消されているが、メモリ上のhistoryListの同期タイミングに遅れが生じる
 //それを回避するため、DBの内容とメモリを常に同期させるため、ジャンプ後の編集時に呼ぶ
@@ -308,6 +326,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry }); //全員に送信
+                    broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("ADD処理のDB保存エラー:", err);
                 }
@@ -397,6 +416,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                     //全員に通知
                     io.emit("message", { ...data, history: historyEntry });
+                    broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
+
 
                 } catch (err) {
                     console.error("UPDATE失敗:", err);
@@ -451,6 +472,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry });
+                    broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("DELETE処理のDB保存エラー:", err);
                 }
@@ -502,6 +524,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry });
+                    broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("CLEAR処理のDB保存エラー:", err);
                 }
@@ -555,22 +578,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     }
                     await pool.query('COMMIT');
 
-                    //クライアントの履歴を同期する
-                    //UNDO/REDOでは削除がないので、historyList全体を送信
-                    io.emit("message", {
-                        action: "HISTORY_RESPONSE",
-                        history: historyList.map(h => ({
-                            id: h.id,
-                            action: h.action,
-                            objectId: h.objectId,
-                            userId: h.userId,
-                            userName: h.userName,
-                            before: h.before,
-                            after: h.after,
-                            createdAt: h.createdAt
-                        }))
-                    });
-
+                    broadcastHistory();
                     historyPointer--;
                     console.log(`UNDO実行: pointer → ${historyPointer}`);
 
@@ -639,20 +647,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer++;
                     console.log(`REDO実行: pointer → ${historyPointer}`);
 
-                    //クライアントの履歴を同期する
-                    io.emit("message", {
-                        action: "HISTORY_RESPONSE",
-                        history: historyList.map(h => ({
-                            id: h.id,
-                            action: h.action,
-                            objectId: h.objectId,
-                            userId: h.userId,
-                            userName: h.userName,
-                            before: h.before,
-                            after: h.after,
-                            createdAt: h.createdAt
-                        }))
-                    });
+                    broadcastHistory();
 
                     //キャンバス状態も同期
                     io.emit("message", {
@@ -762,22 +757,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                     console.log(`JUMP_TO_HISTORY実行完了: targetIndex ${targetIndex}, DB同期完了`);
 
-                    //最新の履歴一覧（ポインター以降を削除した状態）をクライアントに送信
-                    //これにより、クライアント側のhistorystateが最新に同期される
-                    //だからきっと邪魔な履歴も消えてくれるはず
-                    io.emit("message", {
-                        action: "HISTORY_RESPONSE",
-                        history: historyList.slice(0, historyPointer + 1).map(h => ({
-                            id: h.id,
-                            action: h.action,
-                            objectId: h.objectId,
-                            userId: h.userId,
-                            userName: h.userName,
-                            before: h.before,
-                            after: h.after,
-                            createdAt: h.createdAt
-                        }))
-                    });
+                    broadcastHistory();
 
                     // ループが全部終わったら、最終状態をINIT形式で1回だけ送信
                     io.emit("message", {
