@@ -18,9 +18,6 @@ const App = () => {
     updateRect,
     deleteRect,
     clearCanvas,
-    undo,           //Undo関数を取得
-    redo,           //Redo関数を取得
-    jumpToHistory,  //履歴ジャンプ関数を取得
   } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -48,7 +45,7 @@ const App = () => {
       behavior: "smooth",
       block: "end",
     });
-  }, [history]);
+  },[history]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -95,37 +92,37 @@ const App = () => {
 };
 
   const autoScrollMain = (event) => {
-    const main = mainRef.current;
+  const main = mainRef.current;
 
-    if (!main) {
-      return;
-    }
+  if (!main) {
+    return;
+  }
 
-    const rect = main.getBoundingClientRect();
+  const rect = main.getBoundingClientRect();
 
-    const edgeSize = 80;
-    const scrollSpeed = 24;
+  const edgeSize = 80;
+  const scrollSpeed = 24;
 
-    // 右端に近い
-    if (event.clientX > rect.right - edgeSize) {
-      main.scrollLeft += scrollSpeed;
-    }
+  // 右端に近い
+  if (event.clientX > rect.right - edgeSize) {
+    main.scrollLeft += scrollSpeed;
+  }
 
-    // 左端に近い
-    if (event.clientX < rect.left + edgeSize) {
-      main.scrollLeft -= scrollSpeed;
-    }
+  // 左端に近い
+  if (event.clientX < rect.left + edgeSize) {
+    main.scrollLeft -= scrollSpeed;
+  }
 
-    // 下端に近い
-    if (event.clientY > rect.bottom - edgeSize) {
-      main.scrollTop += scrollSpeed;
-    }
+  // 下端に近い
+  if (event.clientY > rect.bottom - edgeSize) {
+    main.scrollTop += scrollSpeed;
+  }
 
-    // 上端に近い
-    if (event.clientY < rect.top + edgeSize) {
-      main.scrollTop -= scrollSpeed;
-    }
-  };
+  // 上端に近い
+  if (event.clientY < rect.top + edgeSize) {
+    main.scrollTop -= scrollSpeed;
+  }
+};
 
   const handleAddRect = () => {
     addRect();
@@ -143,68 +140,37 @@ const App = () => {
 
     const targetId = selectedId;
 
-    setViewShapes((prev) => {
-      const next = prev.filter((shape) => {
+    setViewShapes((prev)=>{
+      const next = prev.filter((shape)=>{
         return shape.id !== targetId;
       });
 
       viewShapesRef.current = next;
     });
 
-
+    
     setSelectedId(null);
     setInteraction(null);
     deleteRect(selectedId);
-
+    
   };
 
-<<<<<<< HEAD
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") {
-        return;
-      }
-||||||| 9e5a606
- useEffect(() => {
-  const handleKeyDown = (event) => {
-    if (event.key !== "Delete" && event.key !== "Backspace") {
-      return;
-    }
-=======
 useEffect(() => {
   const handleKeyDown = (event) => {
     if (event.key !== "Delete" && event.key !== "Backspace") {
       return;
     }
->>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
-      if (!selectedId) {
-        return;
-      }
+    if (!selectedId) {
+      return;
+    }
 
-<<<<<<< HEAD
-      // 入力欄を編集中なら削除しない
-      const tagName = document.activeElement?.tagName;
-||||||| 9e5a606
-    // 入力欄を編集中なら削除しない
     const tagName = document.activeElement?.tagName;
-=======
-    const tagName = document.activeElement?.tagName;
->>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
-      if (tagName === "INPUT" || tagName === "TEXTAREA") {
-        return;
-      }
+    if (tagName === "INPUT" || tagName === "TEXTAREA") {
+      return;
+    }
 
-<<<<<<< HEAD
-      event.preventDefault();
-      handleDeleteSelected();
-    };
-||||||| 9e5a606
-    event.preventDefault();
-    handleDeleteSelected();
-  };
-=======
     event.preventDefault();
 
     const targetId = selectedId;
@@ -223,26 +189,13 @@ useEffect(() => {
     setInteraction(null);
     deleteRect(targetId);
   };
->>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
-    window.addEventListener("keydown", handleKeyDown);
+  window.addEventListener("keydown", handleKeyDown);
 
-<<<<<<< HEAD
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [selectedId]);
-||||||| 9e5a606
-  return () => {
-    window.removeEventListener("keydown", handleKeyDown);
-  };
-}, [selectedId]);
-=======
   return () => {
     window.removeEventListener("keydown", handleKeyDown);
   };
 }, [selectedId, deleteRect]);
->>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
   const handleColorChange = (event) => {
     if (!selectedId) {
@@ -260,7 +213,7 @@ useEffect(() => {
     });
   };
 
-  //Undoボタン処理
+   //Undoボタン処理
   const handleUndo = () => {
     undo();
   };
@@ -482,12 +435,7 @@ useEffect(() => {
           />
         </div>
 
-        <ul className="history-list"
-          //履歴クリックで該当の時点まで巻き戻し
-          onClick={() => handleHistoryClick(h)}
-          style={{ cursor: "pointer" }}
-          title="クリックでこの時点まで巻き戻します"
-          >
+        <ul className="history-list">
           {history.map((h, i) => (
             <li key={i}>
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
@@ -496,7 +444,7 @@ useEffect(() => {
               {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
-          <li ref={historyEndRef} className="history-end" />
+          <li ref={historyEndRef} className="history-end"/>
         </ul>
       </section>
     </div>
