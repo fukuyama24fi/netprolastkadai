@@ -87,7 +87,7 @@ const App = () => {
 
   // サーバーへ削除通知
   deleteRect(targetId);
-};
+
 
 const autoScrollMain = (event) => {
   const main = mainRef.current;
