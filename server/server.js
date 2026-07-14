@@ -7,7 +7,8 @@ import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライ
 
 
 dotenv.config(); //.envファイルを適用
-const { Pool } = pkg; //あらかじめ窓口を用意しておく
+import { pool } from './config/db.js'; //データベース接続用
+import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -35,12 +36,6 @@ let canvasState = [];
 //  Undo/Redo用のポインター方式メモリ変数 (NEW)
 let historyList = [];        //DBのedit_historyをキャッシュした配列
 let historyPointer = -1;     //現在指している位置（配列のindex）
-
-//Neon 接続設定
-const pool = new Pool({ //データベースへの接続情報を設定
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // SSL接続（Neonで必要）
-});
 
 //許可する更新対象の列リスト
 const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'text'];
@@ -512,7 +507,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     }
 
                     //DB(canvas_objects)へ一括反映
-                   await syncCanvasObjectsToDB();
+                    await syncCanvasObjectsToDB();
 
                     historyPointer--;
                     console.log(`UNDO実行: pointer → ${historyPointer}`);
@@ -689,6 +684,23 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     console.error("JUMP_TO_HISTORY処理失敗:", err);
                 } finally {
                     isProcessing = false; // ロック解除
+                }
+                break;
+            }
+
+            case "EXPORT": {
+                try {
+                    // 現在のキャンバス状態からコードを生成
+                    const htmlCode = generateHTMLCode(canvasState);
+
+                    // リクエストをしてきた本人にだけ生成結果を返す 
+                    socket.emit("message", {
+                        action: "EXPORT_RESULT",
+                        html: htmlCode
+                    });
+                    console.log(`コード生成を実行しました (userId: ${userId})`);
+                } catch (err) {
+                    console.error("コード生成失敗:", err);
                 }
                 break;
             }
