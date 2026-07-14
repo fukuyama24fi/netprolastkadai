@@ -166,6 +166,11 @@ body {
   pointer-events: none;
 }
 
+/* 四角形 */
+.shape.rect .shape-body {
+  border-radius: 0;
+}
+
 /* 円 */
 .shape.circle .shape-body {
   border-radius: 50%;
@@ -184,9 +189,15 @@ body {
 .shape.text .shape-body {
   display: flex;
   align-items: center;
+
   padding: 4px 8px;
+
   background: transparent;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow: hidden;
+
+  line-height: 1.2;
 }
 /* 選択中の図形 */
 .shape.selected {

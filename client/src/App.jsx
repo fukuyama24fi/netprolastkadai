@@ -202,6 +202,36 @@ const App = () => {
     });
   };
 
+  const handleTextEdit = useCallback(
+  (event, shape) => {
+    event.stopPropagation();
+
+    if (shape.type !== "text") {
+      return;
+    }
+
+    const nextText = window.prompt(
+      "テキストを入力してください",
+      shape.text || ""
+    );
+
+    // キャンセルされた場合
+    if (nextText === null) {
+      return;
+    }
+
+    // 画面に即時反映
+    updateShapeLocal(shape.id, {
+      text: nextText,
+    });
+
+    // サーバーにも保存
+    updateRect(shape.id, {
+      text: nextText,
+    });
+  },
+  [updateShapeLocal, updateRect]
+);
   //Undoボタン処理
   const handleUndo = useCallback(() => {
     undo();
@@ -461,6 +491,7 @@ const App = () => {
         isSelected ? "selected" : "",
       ].join(" ")}
       onMouseDown={(event) => startDrag(event, shape)}
+      onDoubleClick={(event) => handleTextEdit(event, shape)}
       style={{
         left: `${shape.x}px`,
         top: `${shape.y}px`,
@@ -487,9 +518,7 @@ const App = () => {
 
       <div
         className="resize-handle"
-        onMouseDown={(event) =>
-          startResize(event, shape)
-        }
+        onMouseDown={(event) => startResize(event, shape)}
       />
     </div>
   );

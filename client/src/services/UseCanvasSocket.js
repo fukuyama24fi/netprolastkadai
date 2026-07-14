@@ -183,17 +183,17 @@ export function useCanvasSocket() {
         }
 
         case "text": {
-          newShape = {
-            ...commonShape,
-            width: 180,
-            height: 50,
-            fill: "#222222",
-            text: "テキスト",
-            fontSize: 24,
-          };
+  newShape = {
+    ...commonShape,
+    width: 180,
+    height: 50,
+    fill: "#222222",
+    text: "テキスト",
+    fontSize: 24,
+  };
 
-          break;
-        }
+  break;
+}
 
         case "rect":
         default: {
