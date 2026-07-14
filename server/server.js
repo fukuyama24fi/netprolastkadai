@@ -304,6 +304,21 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                     const targetEntry = lastEntry.rows[0];
 
+                    //UNDO/REDOレコードなら、その1つ前を探す
+                    let entryToUndo = targetEntry;
+                    if (targetEntry.action === "UNDO" || targetEntry.action === "REDO") {
+                        // 1つ前の操作を取得
+                        const previousResult = await pool.query(
+                            `SELECT * FROM edit_history WHERE id < $1 ORDER BY id DESC LIMIT 1`,
+                            [targetEntry.id]
+                        );
+                        if (!previousResult.rows.length) {
+                            console.log("Undo対象がありません");
+                            break;
+                        }
+                        entryToUndo = previousResult.rows[0];
+                    }
+
                     //逆操作を実行
                     let broadcastAction;
 
@@ -359,12 +374,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             broadcastAction = { action: "INIT", objects: beforeArray };
                             break;
                         }
-                        //Undo/Redoは逆操作しない
-                        default:
-                            if (targetEntry.action === "UNDO" || targetEntry.action === "REDO") {
-                                console.log("UNDOまたはREDOが履歴の最後のため、スキップします");
-                                break;
-                            }
+                        
                     }
 
                     //UNDO自体を履歴に記録
@@ -600,10 +610,10 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     });
 
                 } catch (err) {
-                        console.error("JUMP_TO_HISTORY処理失敗:", err);
-                    }
-                    break;
+                    console.error("JUMP_TO_HISTORY処理失敗:", err);
                 }
+                break;
+            }
 
             default:
                 console.log("存在しない操作です", data.action);
