@@ -221,10 +221,18 @@ const handleRedo = () => {
   redo();
 };
 
-//履歴クリック時の処理（ジャンプ）
-const handleHistoryClick = (historyItem) => {
-  jumpToHistory(historyItem.id);
-};
+//履歴クリック時の処理（ジャンプ。状態更新タイミングを制御）
+ const handleHistoryClick = useCallback((historyItem) => {
+    //すでにインタラクション中なら実行しない（競合防止）
+    if (interaction) {
+      console.warn("ドラッグ/リサイズ中は履歴ジャンプできません");
+      return;
+    }
+    //選択を解除してからジャンプ（UI の一貫性）
+    setSelectedId(null);
+    //サーバーに送信
+    jumpToHistory(historyItem.id);
+  }, [jumpToHistory, interaction]); // 🆕 interaction を依存配列に追加
 
 
 const startDrag = (event, shape) => {
@@ -459,8 +467,15 @@ return (
               key={i}
               //履歴クリックで該当の時点まで巻き戻し
               onClick={() => handleHistoryClick(h)}
-              style={{ cursor: "pointer" }}
-              title="クリックでこの時点まで巻き戻します"
+              style={{ 
+                cursor: interaction ? "not-allowed" : "pointer", // 🆕 インタラクション中は無効表示
+                opacity: interaction ? 0.5 : 1 // 🆕 薄くする
+              }}
+              title={
+                interaction 
+                  ? "ドラッグ/リサイズ中は履歴ジャンプできません"
+                  : "クリックでこの時点まで巻き戻します"
+              }
             >
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
               {h.objectId && `（${formatObjectLabel(h)}）`}

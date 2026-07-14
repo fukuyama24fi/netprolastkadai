@@ -226,3 +226,20 @@ body {
   list-style: none;
 }
 
+
+/*履歴リスト：ホバー時 */
+.history-list li:hover {
+  background-color: #e8f4ff;
+}
+
+/*履歴リスト：クリック時 */
+.history-list li:active {
+  background-color: #d0e8ff;
+}
+
+/*無効状態（インタラクション中） */
+.history-list li[style*="opacity: 0.5"]:hover {
+  background-color: transparent;
+  cursor: not-allowed !important;
+}
+
