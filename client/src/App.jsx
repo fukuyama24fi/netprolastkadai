@@ -448,42 +448,32 @@ const handleTextKeyDown = useCallback((event) => {
 <div className="shape-buttons">
   <button
     type="button"
-    onClick={() =>
-      handleAddShape("rect")
-    }
+    onClick={() => handleAddShape("rect")}
   >
     四角形を追加
   </button>
 
   <button
     type="button"
-    onClick={() =>
-      handleAddShape("circle")
-    }
+    onClick={() => handleAddShape("circle")}
   >
     円を追加
   </button>
 
   <button
     type="button"
-    onClick={() =>
-      handleAddShape("triangle")
-    }
+    onClick={() => handleAddShape("triangle")}
   >
     三角形を追加
   </button>
 
   <button
     type="button"
-    onClick={() =>
-      handleAddShape("text")
-    }
+    onClick={() => handleAddShape("text")}
   >
     テキストを追加
   </button>
 </div>
-
-
         
 
         <label className="color-tool">

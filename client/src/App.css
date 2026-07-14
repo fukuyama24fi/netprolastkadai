@@ -19,16 +19,15 @@ body {
 
 /* 左ツールバー */
 .tool {
-  width: 160px;
+  width: 180px;
   height: 100vh;
-
   padding: 16px;
 
   background: #222;
 
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 
   flex-shrink: 0;
 }
@@ -69,6 +68,23 @@ body {
 .history-buttons {
   display: flex;
   gap: 6px;
+}
+.shape-buttons{
+    display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.shape-buttons button {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+
+  border: none;
+  border-radius: 6px;
+
+  cursor: pointer;
 }
 
 /* アイコンボタン */
