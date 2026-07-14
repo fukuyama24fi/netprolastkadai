@@ -90,6 +90,23 @@ const App = () => {
     });
   }, [history]);
 
+  useEffect(() => {
+    if (exportedHtml) {
+      const blob = new Blob([exportedHtml], { type: "text/html" });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      
+      // ファイル名は入力欄のものを使う
+      link.download = `${fileName.trim() || "pikva-export"}.html`;
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    }
+  }, [exportedHtml, fileName]);
+
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
   });
@@ -488,6 +505,14 @@ const App = () => {
         <button type="button">
           PNG出力
         </button>
+
+        <button type="button" onClick={exportCode}>
+          HTML出力
+        </button>
+
+        <button type="button" onClick={exportCode}>
+          CSS出力
+        </button>
       </header>
       <div className="app-body">
         <aside className="tool">
@@ -563,28 +588,7 @@ const App = () => {
           <button type="button" onClick={handleClearCanvas}>
             全て消去
           </button>
-
-          {/* エクスポートする場所 */}
-          <hr style={{ width: "100%", borderColor: "#444", margin: "10px 0" }} />
-
-          <button
-            type="button"
-            onClick={exportCode}
-            style={{ background: "#27ae60" }} // 少し目立つ色にする
-          >
-            コードを出力
-          </button>
-
-          {exportedHtml && (
-            <div className="export-container">
-              <textarea
-                className="export-textarea"
-                readOnly
-                value={exportedHtml}
-                placeholder="ここにコードが出力されます"
-              />
-            </div>
-          )}
+          
         </aside >
 
         <main ref={mainRef} className="main">
