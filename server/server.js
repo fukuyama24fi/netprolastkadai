@@ -28,6 +28,10 @@ const io = new Server(server, {
 //キャンバスの状態を保持する変数
 let canvasState = [];
 
+//  Undo/Redo用のポインター方式メモリ変数 (NEW)
+let historyList = [];        //DBのedit_historyをキャッシュした配列
+let historyPointer = -1;     //現在指している位置（配列のindex）
+
 //Neon 接続設定
 const pool = new Pool({ //データベースへの接続情報を設定
     connectionString: process.env.DATABASE_URL,
@@ -39,15 +43,17 @@ const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'tex
 
 //操作履歴をedit_historyテーブルに保存する関数
 //?:プレースホルダーと同じ役割（SQLインジェクション対策）
-async function saveEditHistory({ action, objectId, userId, userName, before, after, revertedEntryId }) {
+//履歴保存関数(efore/after分離)
+async function saveEditHistory({ action, objectId, userId, userName, before, after }) {
     try {
         const result = await pool.query(
-            `INSERT INTO edit_history (action, object_id, user_id, user_name, before, after, reverted_entry_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", 
-             before, after, reverted_entry_id AS "revertedEntryId", created_at AS "createdAt"`,
-            [action, objectId, userId, userName, before ? JSON.stringify(before) : null,
-                after ? JSON.stringify(after) : null, revertedEntryId]
+            `INSERT INTO edit_history (action, object_id, user_id, user_name, before, after)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", 
+              before, after, created_at AS "createdAt"`,
+            [action, objectId, userId, userName,
+                before ? JSON.stringify(before) : null,
+                after ? JSON.stringify(after) : null]
         );
         return result.rows[0];
     } catch (err) {
@@ -68,11 +74,8 @@ async function sendHistory(socket) {
                 h.user_name AS "userName", 
                 h.before, 
                 h.after,
-                h.reverted_entry_id AS "revertedEntryId",
-                h.created_at AS "createdAt",
-                orig.action AS "originalAction"
-             FROM edit_history h
-             LEFT JOIN edit_history orig ON h.reverted_entry_id = orig.id
+                h.created_at AS "createdAt"
+             FROM edit_history
              ORDER BY h.created_at DESC
              LIMIT 100`
         );
@@ -109,9 +112,28 @@ async function startServer() {
         console.log("データベース接続成功");
 
         //初期化完了を待ってからサーバー起動
+        //canvas_objects を読み込む
         const res = await pool.query('SELECT * FROM canvas_objects');
         canvasState = res.rows;
         console.log(`初期データ読み込み完了 (${canvasState.length}件)`);
+
+        //NEW: edit_history をメモリに読み込む
+        const historyRes = await pool.query(
+            `SELECT * FROM edit_history ORDER BY id ASC` // 古い順に読み込む
+        );
+        historyList = historyRes.rows.map(row => ({
+            id: row.id,
+            action: row.action,
+            objectId: row.object_id,
+            userId: row.user_id,
+            userName: row.user_name,
+            before: row.before,
+            after: row.after,
+            createdAt: row.created_at
+        }));
+        //ポインターを最新の状態に設定（起動時は常に最新）
+        historyPointer = historyList.length - 1;
+        console.log(`履歴読み込み完了 (${historyList.length}件), pointer: ${historyPointer}`);
 
         const PORT = process.env.PORT || 3000;
         server.listen(PORT, () => {
@@ -172,6 +194,21 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     );
                     canvasState.push(data.object);
 
+                    //新しい編集が来たら、ポインター後ろを削除
+                    if (historyPointer < historyList.length - 1) {
+                        //ポインター以降のデータをDBからも削除
+                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
+                        if (idsToDelete.length > 0) {
+                            await pool.query(
+                                `DELETE FROM edit_history WHERE id = ANY($1)`,
+                                [idsToDelete]
+                            );
+                        }
+                        // メモリ上のhistoryListも削除
+                        historyList = historyList.slice(0, historyPointer + 1);
+                    }
+
+                    //履歴に記録
                     const historyEntry = await saveEditHistory({
                         action: "ADD",
                         objectId: data.object.id,
@@ -180,6 +217,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         before: null, //Undo・redo用
                         after: data.object
                     });
+
+                    //メモリのhistoryListに追加してポインター更新
+                    historyList.push({
+                        id: historyEntry.id,
+                        action: historyEntry.action,
+                        objectId: historyEntry.objectId,
+                        userId: historyEntry.userId,
+                        userName: historyEntry.userName,
+                        before: historyEntry.before,
+                        after: historyEntry.after,
+                        createdAt: historyEntry.createdAt
+                    });
+                    historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry }); //全員に送信
                 } catch (err) {
@@ -214,6 +264,22 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 }
 
                 try {
+                    //ポインター後ろを削除
+                    if (historyPointer < historyList.length - 1) {
+                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
+                        if (idsToDelete.length > 0) {
+                            await pool.query(
+                                `DELETE FROM edit_history WHERE id = ANY($1)`,
+                                [idsToDelete]
+                            );
+                        }
+                        historyList = historyList.slice(0, historyPointer + 1);
+                    }
+
+                    // 変更前の状態を保存（undo用）
+                    const beforeState = { ...obj };
+
+                    // DB更新
                     const keys = Object.keys(updateData)
                         .map((key, index) => `${key} = $${index + 2}`)
                         .join(",");
@@ -225,9 +291,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         [data.id, ...values]
                     );
 
-                    //上書き前の状態をコピー
-                    const beforeState = { ...obj };
+                    // メモリ更新
                     Object.assign(obj, updateData);
+
                     //履歴を保存
                     const historyEntry = await saveEditHistory({
                         action: "UPDATE",
@@ -237,6 +303,18 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         before: beforeState,
                         after: obj
                     });
+                    historyList.push({
+                        id: historyEntry.id,
+                        action: historyEntry.action,
+                        objectId: historyEntry.objectId,
+                        userId: historyEntry.userId,
+                        userName: historyEntry.userName,
+                        before: historyEntry.before,
+                        after: historyEntry.after,
+                        createdAt: historyEntry.createdAt
+                    });
+                    historyPointer = historyList.length - 1;
+
                     //全員に通知
                     io.emit("message", { ...data, history: historyEntry });
 
@@ -248,9 +326,24 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "DELETE": {
                 try {
+                    //ポインター後ろを削除
+                    if (historyPointer < historyList.length - 1) {
+                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
+                        if (idsToDelete.length > 0) {
+                            await pool.query(
+                                `DELETE FROM edit_history WHERE id = ANY($1)`,
+                                [idsToDelete]
+                            );
+                        }
+                        historyList = historyList.slice(0, historyPointer + 1);
+                    }
+
+                    // 削除前のオブジェクトを保存（undo用）
                     const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
+                    //DB削除
                     await pool.query('DELETE FROM canvas_objects WHERE id = $1', [data.id]);
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
+                    //メモリ削除
                     canvasState = canvasState.filter(obj => obj.id !== data.id);
 
                     const historyEntry = await saveEditHistory({
@@ -258,9 +351,22 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         objectId: data.id,
                         userId,
                         userName,
-                        before: deletedObj,
+                        before: deletedObj, //削除前のオブジェクト
                         after: null
                     });
+
+                    historyList.push({
+                        id: historyEntry.id,
+                        action: historyEntry.action,
+                        objectId: historyEntry.objectId,
+                        userId: historyEntry.userId,
+                        userName: historyEntry.userName,
+                        before: historyEntry.before,
+                        after: historyEntry.after,
+                        createdAt: historyEntry.createdAt
+                    });
+                    historyPointer = historyList.length - 1;
+
                     io.emit("message", { ...data, history: historyEntry });
                 } catch (err) {
                     console.error("DELETE処理のDB保存エラー:", err);
@@ -270,9 +376,23 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "CLEAR": {
                 try {
+                    //ポインター後ろを削除 
+                    if (historyPointer < historyList.length - 1) {
+                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
+                        if (idsToDelete.length > 0) {
+                            await pool.query(
+                                `DELETE FROM edit_history WHERE id = ANY($1)`,
+                                [idsToDelete]
+                            );
+                        }
+                        historyList = historyList.slice(0, historyPointer + 1);
+                    }
+
                     //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
+                    // クリア前の全オブジェクトを保存（undo用）
                     const beforeObjects = [...canvasState];
                     await pool.query('DELETE FROM canvas_objects');
+                    //メモリクリア
                     canvasState = [];
                     const historyEntry = await saveEditHistory({
                         action: "CLEAR",
@@ -282,6 +402,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         before: beforeObjects,
                         after: null
                     });
+
+                    historyList.push({
+                        id: historyEntry.id,
+                        action: historyEntry.action,
+                        objectId: historyEntry.objectId,
+                        userId: historyEntry.userId,
+                        userName: historyEntry.userName,
+                        before: historyEntry.before,
+                        after: historyEntry.after,
+                        createdAt: historyEntry.createdAt
+                    });
+                    historyPointer = historyList.length - 1;
+
                     io.emit("message", { ...data, history: historyEntry });
                 } catch (err) {
                     console.error("CLEAR処理のDB保存エラー:", err);
@@ -291,67 +424,50 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "UNDO": {
                 try {
-                    // 一番最後の行を取得
-                    const lastEntry = await pool.query(
-                        `SELECT * FROM edit_history ORDER BY id DESC LIMIT 1`
-                    );
-
-                    //もし編集履歴がなかったら
-                    if (!lastEntry.rows.length) {
+                    // ポインターが0未満なら戻れない
+                    if (historyPointer < 0) {
                         console.log("Undo対象がありません");
                         break;
                     }
 
-                    const targetEntry = lastEntry.rows[0];
+                    // 現在のポインター位置の履歴を取得
+                    const targetEntry = historyList[historyPointer];
 
-                    //UNDO/REDOレコードなら、その1つ前を探す
-                    let entryToUndo = targetEntry;
-                    if (targetEntry.action === "UNDO" || targetEntry.action === "REDO") {
-                        // 1つ前の操作を取得
-                        const previousResult = await pool.query(
-                            `SELECT * FROM edit_history WHERE id < $1 ORDER BY id DESC LIMIT 1`,
-                            [targetEntry.id]
-                        );
-                        if (!previousResult.rows.length) {
-                            console.log("Undo対象がありません");
-                            break;
-                        }
-                        entryToUndo = previousResult.rows[0];
+                    if (!targetEntry) {
+                        console.log("Undo対象がありません");
+                        break;
                     }
 
-                    //逆操作を実行
                     let broadcastAction;
 
+                    //逆操作を実行
                     switch (targetEntry.action) {
                         case "ADD": {
-                            //ADD を取り消す → DELETE
-                            await pool.query('DELETE FROM canvas_objects WHERE id = $1', [targetEntry.object_id]);
-                            canvasState = canvasState.filter(obj => obj.id !== targetEntry.object_id);
-                            broadcastAction = { action: "DELETE", id: targetEntry.object_id };
+                            // ADD を取り消す → DELETE
+                            await pool.query('DELETE FROM canvas_objects WHERE id = $1', [targetEntry.objectId]);
+                            canvasState = canvasState.filter(obj => obj.id !== targetEntry.objectId);
+                            broadcastAction = { action: "DELETE", id: targetEntry.objectId };
                             break;
                         }
 
                         case "UPDATE": {
-                            //UPDATE を取り消す → 変更前で上書き
+                            // UPDATE を取り消す → 変更前の状態で上書き
                             const beforeData = targetEntry.before;
                             await pool.query(
-                                `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6
-                     WHERE id = $7`,
-                                [beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text, targetEntry.object_id]
+                                `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6 WHERE id = $7`,
+                                [beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text, targetEntry.objectId]
                             );
-
-                            const obj = canvasState.find(o => o.id === targetEntry.object_id);
+                            const obj = canvasState.find(o => o.id === targetEntry.objectId);
                             Object.assign(obj, beforeData);
-                            broadcastAction = { action: "UPDATE", id: targetEntry.object_id, changes: beforeData };
+                            broadcastAction = { action: "UPDATE", id: targetEntry.objectId, changes: beforeData };
                             break;
                         }
 
                         case "DELETE": {
-                            //DELETE を取り消す → 復元（ADD）
+                            // DELETE を取り消す → 復元
                             const beforeData = targetEntry.before;
                             await pool.query(
-                                `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                                 [beforeData.id, beforeData.type, beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text]
                             );
                             canvasState.push(beforeData);
@@ -360,13 +476,12 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
 
                         case "CLEAR": {
-                            //CLEAR を取り消す → 全オブジェクト復元
+                            // CLEAR を取り消す → 全復元
                             const beforeArray = targetEntry.before;
                             await pool.query('DELETE FROM canvas_objects');
                             for (const obj of beforeArray) {
                                 await pool.query(
-                                    `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                    `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                                     [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
                                 );
                             }
@@ -374,22 +489,17 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             broadcastAction = { action: "INIT", objects: beforeArray };
                             break;
                         }
-                        
                     }
 
-                    //UNDO自体を履歴に記録
-                    const undoEntry = await saveEditHistory({
-                        action: "UNDO",
-                        objectId: targetEntry.object_id,
-                        userId,
-                        userName,
-                        before: null,
-                        after: null,
-                        revertedEntryId: targetEntry.id
-                    });
+                    // ポインターを1つ戻す
+                    historyPointer--;
+                    console.log(`UNDO実行: pointer ${historyPointer + 1} → ${historyPointer}`);
 
-                    //全クライアントに逆操作を配信（UNDO専用メッセージではなく既存形式で）
-                    io.emit("message", { ...broadcastAction, history: undoEntry });
+                    //INIT形式でキャンバス全体を再同期する
+                    io.emit("message", {
+                        action: "INIT",
+                        objects: canvasState
+                    });
 
                 } catch (err) {
                     console.error("UNDO処理失敗:", err);
@@ -397,32 +507,23 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
+
             case "REDO": {
                 try {
-                    // 一番最後の行を取得
-                    const lastEntry = await pool.query(
-                        `SELECT * FROM edit_history ORDER BY id DESC LIMIT 1`
-                    );
-
-                    if (!lastEntry.rows.length || lastEntry.rows[0].action !== "UNDO") {
+                    // ポインターが最後の1つ手前以降なら進めない
+                    if (historyPointer >= historyList.length - 1) {
                         console.log("Redo対象がありません");
                         break;
                     }
 
-                    const undoEntry = lastEntry.rows[0];
+                    // 次のポインター位置の履歴を取得
+                    const targetEntry = historyList[historyPointer + 1];
 
-                    //UNDO が指す元の行を取得
-                    const originalEntry = await pool.query(
-                        `SELECT * FROM edit_history WHERE id = $1`,
-                        [undoEntry.reverted_entry_id]
-                    );
-
-                    if (!originalEntry.rows.length) {
-                        console.log("元の操作が見つかりません");
+                    if (!targetEntry) {
+                        console.log("Redo対象がありません");
                         break;
                     }
 
-                    const targetEntry = originalEntry.rows[0];
                     let broadcastAction;
 
                     //元の操作をもう一度実行
@@ -430,8 +531,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         case "ADD": {
                             const obj = targetEntry.after;
                             await pool.query(
-                                `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                                 [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
                             );
                             canvasState.push(obj);
@@ -442,21 +542,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         case "UPDATE": {
                             const afterData = targetEntry.after;
                             await pool.query(
-                                `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6
-                     WHERE id = $7`,
-                                [afterData.x, afterData.y, afterData.width, afterData.height, afterData.fill, afterData.text, targetEntry.object_id]
+                                `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6 WHERE id = $7`,
+                                [afterData.x, afterData.y, afterData.width, afterData.height, afterData.fill, afterData.text, targetEntry.objectId]
                             );
-
-                            const obj = canvasState.find(o => o.id === targetEntry.object_id);
+                            const obj = canvasState.find(o => o.id === targetEntry.objectId);
                             Object.assign(obj, afterData);
-                            broadcastAction = { action: "UPDATE", id: targetEntry.object_id, changes: afterData };
+                            broadcastAction = { action: "UPDATE", id: targetEntry.objectId, changes: afterData };
                             break;
                         }
 
                         case "DELETE": {
-                            await pool.query('DELETE FROM canvas_objects WHERE id = $1', [targetEntry.object_id]);
-                            canvasState = canvasState.filter(obj => obj.id !== targetEntry.object_id);
-                            broadcastAction = { action: "DELETE", id: targetEntry.object_id };
+                            await pool.query('DELETE FROM canvas_objects WHERE id = $1', [targetEntry.objectId]);
+                            canvasState = canvasState.filter(obj => obj.id !== targetEntry.objectId);
+                            broadcastAction = { action: "DELETE", id: targetEntry.objectId };
                             break;
                         }
 
@@ -468,18 +566,15 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
                     }
 
-                    // REDO自体を履歴に記録
-                    const redoEntry = await saveEditHistory({
-                        action: "REDO",
-                        objectId: targetEntry.object_id,
-                        userId,
-                        userName,
-                        before: null,
-                        after: null,
-                        revertedEntryId: undoEntry.id
-                    });
+                    // ポインターを1つ進める
+                    historyPointer++;
+                    console.log(`REDO実行: pointer ${historyPointer - 1} → ${historyPointer}`);
 
-                    io.emit("message", { ...broadcastAction, history: redoEntry });
+                    //INIT形式でキャンバス全体を再同期する
+                    io.emit("message", {
+                        action: "INIT",
+                        objects: canvasState
+                    });
 
                 } catch (err) {
                     console.error("REDO処理失敗:", err);
@@ -497,113 +592,114 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         break;
                     }
 
-                    //ターゲットの履歴行を取得
-                    const targetResult = await pool.query(
-                        `SELECT * FROM edit_history WHERE id = $1`,
-                        [targetHistoryId]
-                    );
+                    // targetIdをhistoryListから検索して、その配列インデックスを取得
+                    const targetIndex = historyList.findIndex(h => h.id === targetHistoryId);
 
-                    if (!targetResult.rows.length) {
+                    if (targetIndex === -1) {
                         console.log("指定された履歴が見つかりません:", targetHistoryId);
                         break;
                     }
 
-                    const targetEntry = targetResult.rows[0];
-
-                    //現在の最後の行を取得
-                    const currentLastResult = await pool.query(
-                        `SELECT * FROM edit_history ORDER BY id DESC LIMIT 1`
-                    );
-
-                    if (!currentLastResult.rows.length) {
-                        console.log("履歴が存在しません");
-                        break;
-                    }
-
-                    const currentLastId = currentLastResult.rows[0].id;
-
-                    //ターゲットがすでに現在の状態と同じなら何もしない
-                    if (targetHistoryId === currentLastId) {
+                    if (targetIndex === historyPointer) {
                         console.log("すでにその状態です");
                         break;
                     }
 
-                    //ターゲットより後ろの履歴を全て取得
-                    const laterEntriesResult = await pool.query(
-                        `SELECT * FROM edit_history 
-                         WHERE id > $1 
-                         ORDER BY id DESC`,
-                        [targetHistoryId]
-                    );
+                    //ポインターを動かしながら逆操作を実行
+                    if (targetIndex < historyPointer) {
+                        // 戻る方向: targetIndex から historyPointer までを逆順で UNDO
+                        for (let i = historyPointer; i > targetIndex; i--) {
+                            const entry = historyList[i];
 
-                    const laterEntries = laterEntriesResult.rows;
+                            switch (entry.action) {
+                                case "ADD": {
+                                    await pool.query('DELETE FROM canvas_objects WHERE id = $1', [entry.objectId]);
+                                    canvasState = canvasState.filter(obj => obj.id !== entry.objectId);
+                                    break;
+                                }
 
-                    //後ろの履歴を逆順（古い順）に処理してUNDOしていく
-                    for (const entry of laterEntries.reverse()) {
-                        // すでにUNDOされているものはスキップ
-                        if (entry.action === "UNDO" || entry.action === "REDO") {
-                            continue;
-                        }
-
-                        //逆操作を実行
-                        switch (entry.action) {
-                            case "ADD": {
-                                await pool.query('DELETE FROM canvas_objects WHERE id = $1', [entry.object_id]);
-                                canvasState = canvasState.filter(obj => obj.id !== entry.object_id);
-                                break;
-                            }
-
-                            case "UPDATE": {
-                                const beforeData = entry.before;
-                                await pool.query(
-                                    `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6
-                             WHERE id = $7`,
-                                    [beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text, entry.object_id]
-                                );
-                                const obj = canvasState.find(o => o.id === entry.object_id);
-                                if (obj) Object.assign(obj, beforeData);
-                                break;
-                            }
-
-                            case "DELETE": {
-                                const beforeData = entry.before;
-                                await pool.query(
-                                    `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
-                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                                    [beforeData.id, beforeData.type, beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text]
-                                );
-                                canvasState.push(beforeData);
-                                break;
-                            }
-
-                            case "CLEAR": {
-                                const beforeArray = entry.before;
-                                await pool.query('DELETE FROM canvas_objects');
-                                for (const obj of beforeArray) {
+                                case "UPDATE": {
+                                    const beforeData = entry.before;
                                     await pool.query(
-                                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
-                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                        `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6 WHERE id = $7`,
+                                        [beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text, entry.objectId]
+                                    );
+                                    const obj = canvasState.find(o => o.id === entry.objectId);
+                                    if (obj) Object.assign(obj, beforeData);
+                                    break;
+                                }
+
+                                case "DELETE": {
+                                    const beforeData = entry.before;
+                                    await pool.query(
+                                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                        [beforeData.id, beforeData.type, beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text]
+                                    );
+                                    canvasState.push(beforeData);
+                                    break;
+                                }
+
+                                case "CLEAR": {
+                                    const beforeArray = entry.before;
+                                    await pool.query('DELETE FROM canvas_objects');
+                                    for (const obj of beforeArray) {
+                                        await pool.query(
+                                            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
+                                        );
+                                    }
+                                    canvasState = beforeArray;
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // 進む方向:historyPointerからtargetIndexまでを順番にREDO
+                        for (let i = historyPointer + 1; i <= targetIndex; i++) {
+                            const entry = historyList[i];
+
+                            switch (entry.action) {
+                                case "ADD": {
+                                    const obj = entry.after;
+                                    await pool.query(
+                                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                                         [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
                                     );
+                                    canvasState.push(obj);
+                                    break;
                                 }
-                                canvasState = beforeArray;
-                                break;
+
+                                case "UPDATE": {
+                                    const afterData = entry.after;
+                                    await pool.query(
+                                        `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6 WHERE id = $7`,
+                                        [afterData.x, afterData.y, afterData.width, afterData.height, afterData.fill, afterData.text, entry.objectId]
+                                    );
+                                    const obj = canvasState.find(o => o.id === entry.objectId);
+                                    if (obj) Object.assign(obj, afterData);
+                                    break;
+                                }
+
+                                case "DELETE": {
+                                    await pool.query('DELETE FROM canvas_objects WHERE id = $1', [entry.objectId]);
+                                    canvasState = canvasState.filter(obj => obj.id !== entry.objectId);
+                                    break;
+                                }
+
+                                case "CLEAR": {
+                                    await pool.query('DELETE FROM canvas_objects');
+                                    canvasState = [];
+                                    break;
+                                }
                             }
                         }
-                    } // ← forループを閉じる（元コードはここが抜けていた）
+                    }
 
-                    //全ての逆操作を一度に履歴に記録（1件の統合UNDO として）
-                    const undoEntry = await saveEditHistory({
-                        action: "UNDO",
-                        objectId: null, // 複数オブジェクトなので null
-                        userId,
-                        userName,
-                        before: null,
-                        after: null,
-                        revertedEntryId: targetHistoryId // ジャンプ先のIDを指す
-                    });
+                    // ポインターを更新
+                    historyPointer = targetIndex;
+                    console.log(`JUMP_TO_HISTORY実行: targetIndex ${targetIndex}, pointer更新完了`);
 
-                    //ループが終わったら、最終状態をINIT形式で1回だけ配信
+                    //ループが全部終わったら、最終状態をINIT形式で1回だけ送信
                     io.emit("message", {
                         action: "INIT",
                         objects: canvasState
