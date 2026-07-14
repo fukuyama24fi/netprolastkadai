@@ -59,7 +59,6 @@ async function saveEditHistory({ action, objectId, userId, userName, before, aft
 // 直近100件だけ取得（全件だと数が増えたとき重くなるので）
 async function sendHistory(socket) {
     try {
-        //履歴を取得（元の履歴行がある場合はJOINして取得）
         const result = await pool.query(
             `SELECT 
                 h.id,
@@ -78,15 +77,15 @@ async function sendHistory(socket) {
              LIMIT 100`
         );
         
-        // JSONBをパースして、履歴一覧に合わせた形式に変換
+        //psqlのpgライブラリはJSONBを自動的にオブジェクトに変換する
         const formattedHistory = result.rows.map(row => ({
             id: row.id,
             action: row.action,
             objectId: row.objectId,
             userId: row.userId,
             userName: row.userName,
-            before: row.before ? JSON.parse(row.before) : null,
-            after: row.after ? JSON.parse(row.after) : null,
+            before: row.before,
+            after: row.after,
             revertedEntryId: row.revertedEntryId,
             originalAction: row.originalAction,
             createdAt: row.createdAt
@@ -94,7 +93,7 @@ async function sendHistory(socket) {
         
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-            history: formattedHistory.reverse() //古い順に
+            history: formattedHistory.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
@@ -137,10 +136,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
     console.log(`${socket.id} 接続しました (userId: ${connectedUserId}),, userName: ${connectedUserName})`);
 
     //接続した本人だけに、今のキャンバスの状態(全部)を渡す
-    socket.emit("message", {
-        action: "INIT",
-        objects: canvasState
-    });
     socket.emit("message", {
         action: "INIT",
         objects: canvasState
@@ -230,6 +225,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         [data.id, ...values]
                     );
 
+                    //上書き前の状態をコピー
+                    const beforeState = { ...obj };
                     Object.assign(obj, updateData);
                     //履歴を保存
                     const historyEntry = await saveEditHistory({
@@ -251,6 +248,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "DELETE": {
                 try {
+                    const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
                     await pool.query('DELETE FROM canvas_objects WHERE id = $1', [data.id]);
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
                     canvasState = canvasState.filter(obj => obj.id !== data.id);
@@ -272,6 +270,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "CLEAR": {
                 try {
+                    //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
+                    const beforeObjects = [...canvasState];
                     await pool.query('DELETE FROM canvas_objects');
                     canvasState = [];
                     const historyEntry = await saveEditHistory({
@@ -279,7 +279,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         objectId: null,
                         userId,
                         userName,
-                        before: [...canvasState],  //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
+                        before: beforeObjects, 
                         after: null
                     });
                     io.emit("message", { ...data, history: historyEntry });
