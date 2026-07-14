@@ -580,25 +580,26 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                 break;
                             }
                         }
+                    } // ← forループを閉じる（元コードはここが抜けていた）
 
-                        //全ての逆操作を一度に履歴に記録（1件の統合UNDO として）
-                        const undoEntry = await saveEditHistory({
-                            action: "UNDO",
-                            objectId: null, // 複数オブジェクトなので null
-                            userId,
-                            userName,
-                            before: null,
-                            after: null,
-                            revertedEntryId: targetHistoryId // ジャンプ先のIDを指す
-                        });
+                    //全ての逆操作を一度に履歴に記録（1件の統合UNDO として）
+                    const undoEntry = await saveEditHistory({
+                        action: "UNDO",
+                        objectId: null, // 複数オブジェクトなので null
+                        userId,
+                        userName,
+                        before: null,
+                        after: null,
+                        revertedEntryId: targetHistoryId // ジャンプ先のIDを指す
+                    });
 
-                        //ループが終わったら、最終状態をINIT形式で1回だけ配信
-                        io.emit("message", {
-                            action: "INIT",
-                            objects: canvasState
-                        });
+                    //ループが終わったら、最終状態をINIT形式で1回だけ配信
+                    io.emit("message", {
+                        action: "INIT",
+                        objects: canvasState
+                    });
 
-                    } catch (err) {
+                } catch (err) {
                         console.error("JUMP_TO_HISTORY処理失敗:", err);
                     }
                     break;

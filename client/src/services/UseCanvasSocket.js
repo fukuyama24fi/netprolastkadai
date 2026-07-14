@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import socketService from "./socketService";
 
 export function useCanvasSocket() {
@@ -204,13 +204,8 @@ export function useCanvasSocket() {
     updateRect,
     deleteRect,
     clearCanvas,
+    undo,
+    redo,
+    jumpToHistory,
   };
 }
-
-const undo = () => {
-    socket.emit("message", { action: "UNDO", userId });
-};
-
-const redo = () => {
-    socket.emit("message", { action: "REDO", userId });
-};
