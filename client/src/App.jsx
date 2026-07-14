@@ -68,111 +68,71 @@ const App = () => {
     })
   );
 
-  const targetId = selectedId;
+  const updateShapeLocal = useCallback((id, changes) => { //useCallbackでメモ化
+    setViewShapes((prev) => {
+      const next = prev.map((shape) => {
+        if (shape.id !== id) {
+          return shape;
+        }
 
-  // 先に画面上から消す
-  setViewShapes((prev) => {
-    const next = prev.filter((shape) => {
-      return shape.id !== targetId;
+        return {
+          ...shape,
+          ...changes,
+        };
+      });
+
+      viewShapesRef.current = next;
+
+      return next;
     });
+  }, []);
 
-    viewShapesRef.current = next;
+  const autoScrollMain = useCallback((event) => { //useCallbackでメモ化
+    const main = mainRef.current;
 
-    return next;
-  });
-
-  // 選択状態を解除
-  setSelectedId(null);
-  setInteraction(null);
-
-  // サーバーへ削除通知
-  deleteRect(targetId);
-
-
-const autoScrollMain = (event) => {
-  const main = mainRef.current;
-
-  if (!main) {
-    return;
-  }
-
-  const rect = main.getBoundingClientRect();
-
-  const edgeSize = 80;
-  const scrollSpeed = 24;
-
-  // 右端に近い
-  if (event.clientX > rect.right - edgeSize) {
-    main.scrollLeft += scrollSpeed;
-  }
-
-  // 左端に近い
-  if (event.clientX < rect.left + edgeSize) {
-    main.scrollLeft -= scrollSpeed;
-  }
-
-  // 下端に近い
-  if (event.clientY > rect.bottom - edgeSize) {
-    main.scrollTop += scrollSpeed;
-  }
-
-  // 上端に近い
-  if (event.clientY < rect.top + edgeSize) {
-    main.scrollTop -= scrollSpeed;
-  }
-};
-
-const handleAddRect = () => {
-  addRect();
-};
-
-const handleClearCanvas = () => {
-  clearCanvas();
-  setSelectedId(null);
-};
-
-const handleDeleteSelected = () => {
-  if (!selectedId) {
-    return;
-  }
-
-  const targetId = selectedId;
-
-  setViewShapes((prev) => {
-    const next = prev.filter((shape) => {
-      return shape.id !== targetId;
-    });
-
-    viewShapesRef.current = next;
-  });
-
-
-  setSelectedId(null);
-  setInteraction(null);
-  deleteRect(selectedId);
-
-};
-
-useEffect(() => {
-  const handleKeyDown = (event) => {
-    if (event.key !== "Delete" && event.key !== "Backspace") {
+    if (!main) {
       return;
     }
 
+    const rect = main.getBoundingClientRect();
+
+    const edgeSize = 80;
+    const scrollSpeed = 24;
+
+    if (event.clientX > rect.right - edgeSize) {
+      main.scrollLeft += scrollSpeed;
+    }
+
+    if (event.clientX < rect.left + edgeSize) {
+      main.scrollLeft -= scrollSpeed;
+    }
+
+    if (event.clientY > rect.bottom - edgeSize) {
+      main.scrollTop += scrollSpeed;
+    }
+
+    if (event.clientY < rect.top + edgeSize) {
+      main.scrollTop -= scrollSpeed;
+    }
+  }, []);
+
+  const handleAddRect = useCallback(() => { //useCallbackでメモ化
+    addRect();
+  }, [addRect]);
+
+  const handleClearCanvas = useCallback(() => { //useCallbackでメモ化
+    clearCanvas();
+    setSelectedId(null);
+  }, [clearCanvas]);
+
+  const handleDeleteSelected = useCallback(() => { //useCallbackでメモ化
     if (!selectedId) {
       return;
     }
 
-    const tagName = document.activeElement?.tagName;
-
-    if (tagName === "INPUT" || tagName === "TEXTAREA") {
-      return;
-    }
-
-    event.preventDefault();
-
     const targetId = selectedId;
 
+    // 先に画面上から消す
     setViewShapes((prev) => {
       const next = prev.filter((shape) => {
         return shape.id !== targetId;
@@ -183,46 +143,120 @@ useEffect(() => {
       return next;
     });
 
+    // 選択状態を解除
     setSelectedId(null);
     setInteraction(null);
-    deleteRect(targetId);
+
+  // サーバーへ削除通知
+  deleteRect(targetId);
+
+  }, [selectedId, deleteRect]);
+
+
+  const autoScrollMain = (event) => {
+    const main = mainRef.current;
+
+    if (!main) {
+      return;
+    }
+
+    const rect = main.getBoundingClientRect();
+
+    const edgeSize = 80;
+    const scrollSpeed = 24;
+
+    // 右端に近い
+    if (event.clientX > rect.right - edgeSize) {
+      main.scrollLeft += scrollSpeed;
+    }
+
+    // 左端に近い
+    if (event.clientX < rect.left + edgeSize) {
+      main.scrollLeft -= scrollSpeed;
+    }
+
+    // 下端に近い
+    if (event.clientY > rect.bottom - edgeSize) {
+      main.scrollTop += scrollSpeed;
+    }
+
+    // 上端に近い
+    if (event.clientY < rect.top + edgeSize) {
+      main.scrollTop -= scrollSpeed;
+    }
   };
 
-  window.addEventListener("keydown", handleKeyDown);
-
-  return () => {
-    window.removeEventListener("keydown", handleKeyDown);
+  const handleAddRect = () => {
+    addRect();
   };
-}, [selectedId, deleteRect]);
 
-const handleColorChange = (event) => {
-  if (!selectedId) {
-    return;
-  }
+  const handleClearCanvas = () => {
+    clearCanvas();
+    setSelectedId(null);
+  };
 
-  const fill = event.target.value;
+  const handleDeleteSelected = () => {
+    if (!selectedId) {
+      return;
+    }
 
-  updateShapeLocal(selectedId, {
-    fill,
-  });
+  };
 
-  updateRect(selectedId, {
-    fill,
-  });
-};
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
 
-//Undoボタン処理
-const handleUndo = () => {
-  undo();
-};
+      if (!selectedId) {
+        return;
+      }
 
-//Redoボタン処理
-const handleRedo = () => {
-  redo();
-};
+      const tagName = document.activeElement?.tagName;
 
-//履歴クリック時の処理（ジャンプ。状態更新タイミングを制御）
- const handleHistoryClick = useCallback((historyItem) => {
+      if (tagName === "INPUT" || tagName === "TEXTAREA") {
+        return;
+      }
+
+      event.preventDefault();
+      handleDeleteSelected();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedId, deleteRect]);
+
+  const handleColorChange = (event) => {
+    if (!selectedId) {
+      return;
+    }
+
+    const fill = event.target.value;
+
+    updateShapeLocal(selectedId, {
+      fill,
+    });
+
+    updateRect(selectedId, {
+      fill,
+    });
+  };
+
+  //Undoボタン処理
+  const handleUndo = useCallback(() => {
+    undo();
+  }, [undo]);
+
+  //Redoボタン処理
+  const handleRedo = useCallback(() => {
+    redo();
+  }, [redo]);
+
+  //履歴クリック時の処理（ジャンプ。状態更新タイミングを制御）
+  const handleHistoryClick = useCallback((historyItem) => {
     //すでにインタラクション中なら実行しない（競合防止）
     if (interaction) {
       console.warn("ドラッグ/リサイズ中は履歴ジャンプできません");
@@ -232,163 +266,163 @@ const handleRedo = () => {
     setSelectedId(null);
     //サーバーに送信
     jumpToHistory(historyItem.id);
-  }, [jumpToHistory, interaction]); // 🆕 interaction を依存配列に追加
+  }, [jumpToHistory]); 
 
 
-const startDrag = (event, shape) => {
-  setSelectedId(shape.id);
+  const startDrag = useCallback((event, shape) => {
+    setSelectedId(shape.id);
 
-  didMoveRef.current = false;
+    didMoveRef.current = false;
 
-  const shapeRect = event.currentTarget.getBoundingClientRect();
+    const shapeRect = event.currentTarget.getBoundingClientRect();
 
-  setInteraction({
-    mode: "drag",
-    id: shape.id,
-    offsetX: event.clientX - shapeRect.left,
-    offsetY: event.clientY - shapeRect.top,
-  });
+    setInteraction({
+      mode: "drag",
+      id: shape.id,
+      offsetX: event.clientX - shapeRect.left,
+      offsetY: event.clientY - shapeRect.top,
+    });
 
-  event.preventDefault();
-};
+    event.preventDefault();
+  }, []);
 
-const startResize = (event, shape) => {
-  event.stopPropagation();
+  const startResize = useCallback((event, shape) => {
+    event.stopPropagation();
 
-  setSelectedId(shape.id);
-  didMoveRef.current = false;
+    setSelectedId(shape.id);
+    didMoveRef.current = false;
 
-  setInteraction({
-    mode: "resize",
-    id: shape.id,
-    startX: event.clientX,
-    startY: event.clientY,
-    startWidth: shape.width,
-    startHeight: shape.height,
-  });
+    setInteraction({
+      mode: "resize",
+      id: shape.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: shape.width,
+      startHeight: shape.height,
+    });
 
-  event.preventDefault();
-};
+    event.preventDefault();
+  }, []);
 
-useEffect(() => {
-  if (!interaction) {
-    return;
-  }
-
-  const handleMouseMove = (event) => {
-    const canvas = canvasRef.current;
-
-
-    if (!canvas) {
+  useEffect(() => {
+    if (!interaction) {
       return;
     }
 
-    didMoveRef.current = true;
-    autoScrollMain(event);
+    const handleMouseMove = (event) => {
+      const canvas = canvasRef.current;
 
-    const canvasRect = canvas.getBoundingClientRect();
 
-    if (interaction.mode === "drag") {
-      const newX =
-        event.clientX - canvasRect.left - interaction.offsetX;
+      if (!canvas) {
+        return;
+      }
 
-      const newY =
-        event.clientY - canvasRect.top - interaction.offsetY;
+      didMoveRef.current = true;
+      autoScrollMain(event);
 
-      updateShapeLocal(interaction.id, {
-        x: newX,
-        y: newY,
-      });
-    }
+      const canvasRect = canvas.getBoundingClientRect();
 
-    if (interaction.mode === "resize") {
-      const diffX = event.clientX - interaction.startX;
-      const diffY = event.clientY - interaction.startY;
-
-      const newWidth = Math.max(
-        30,
-        interaction.startWidth + diffX
-      );
-
-      const newHeight = Math.max(
-        30,
-        interaction.startHeight + diffY
-      );
-
-      updateShapeLocal(interaction.id, {
-        width: newWidth,
-        height: newHeight,
-      });
-    }
-  };
-
-  const handleMouseUp = () => {
-
-    if (!didMoveRef.current) {
-      setInteraction(null);
-      return
-    }
-    const targetShape = viewShapesRef.current.find((shape) => {
-      return shape.id === interaction.id;
-    });
-
-    if (targetShape) {
       if (interaction.mode === "drag") {
-        updateRect(targetShape.id, {
-          x: targetShape.x,
-          y: targetShape.y,
+        const newX =
+          event.clientX - canvasRect.left - interaction.offsetX;
+
+        const newY =
+          event.clientY - canvasRect.top - interaction.offsetY;
+
+        updateShapeLocal(interaction.id, {
+          x: newX,
+          y: newY,
         });
       }
 
       if (interaction.mode === "resize") {
-        updateRect(targetShape.id, {
-          width: targetShape.width,
-          height: targetShape.height,
+        const diffX = event.clientX - interaction.startX;
+        const diffY = event.clientY - interaction.startY;
+
+        const newWidth = Math.max(
+          30,
+          interaction.startWidth + diffX
+        );
+
+        const newHeight = Math.max(
+          30,
+          interaction.startHeight + diffY
+        );
+
+        updateShapeLocal(interaction.id, {
+          width: newWidth,
+          height: newHeight,
         });
       }
-    }
+    };
 
-    setInteraction(null);
+    const handleMouseUp = () => {
+
+      if (!didMoveRef.current) {
+        setInteraction(null);
+        return
+      }
+      const targetShape = viewShapesRef.current.find((shape) => {
+        return shape.id === interaction.id;
+      });
+
+      if (targetShape) {
+        if (interaction.mode === "drag") {
+          updateRect(targetShape.id, {
+            x: targetShape.x,
+            y: targetShape.y,
+          });
+        }
+
+        if (interaction.mode === "resize") {
+          updateRect(targetShape.id, {
+            width: targetShape.width,
+            height: targetShape.height,
+          });
+        }
+      }
+
+      setInteraction(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [interaction, updateShapeLocal, updateRect, autoScrollMain]);
+
+  //履歴のオブジェクトを日本語に変換するよ
+  const formatObjectLabel = (h) => {
+    const type = h.changes?.type;
+    if (type) return TYPE_LABELS[type] || type; //対応表に無ければtypeそのまま表示
+    return h.objectId ? h.objectId.slice(0, 8) : ""; //typeが無い古いデータ用の保険です
   };
 
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseup", handleMouseUp);
-
-  return () => {
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
-  };
-}, [interaction, updateRect]);
-
-//履歴のオブジェクトを日本語に変換するよ
-const formatObjectLabel = (h) => {
-  const type = h.changes?.type;
-  if (type) return TYPE_LABELS[type] || type; //対応表に無ければtypeそのまま表示
-  return h.objectId ? h.objectId.slice(0, 8) : ""; //typeが無い古いデータ用の保険です
-};
-
-return (
+  return (
     <div className="app">
       <aside className="tool">
         <h1>Pikva</h1>
 
         <div className="history-buttons">
-         <button
-          type="button"
-          className="icon-button"
-          onClick={handleUndo}
-          title="Undo"
-         >
+          <button
+            type="button"
+            className="icon-button"
+            onClick={handleUndo}
+            title="Undo"
+          >
             ↶
           </button>
 
           <button
-          type="button"
-          className="icon-button"
-          onClick={handleUndo}
-          title="Undo"
-         >
-             ↷
+            type="button"
+            className="icon-button"
+            onClick={handleUndo}
+            title="Undo"
+          >
+            ↷
           </button>
         </div>
 
@@ -461,18 +495,18 @@ return (
           />
         </div>
 
-         <ul className="history-list">
+        <ul className="history-list">
           {history.map((h, i) => (
-            <li 
+            <li
               key={i}
               //履歴クリックで該当の時点まで巻き戻し
               onClick={() => handleHistoryClick(h)}
-              style={{ 
+              style={{
                 cursor: interaction ? "not-allowed" : "pointer", // 🆕 インタラクション中は無効表示
                 opacity: interaction ? 0.5 : 1 // 🆕 薄くする
               }}
               title={
-                interaction 
+                interaction
                   ? "ドラッグ/リサイズ中は履歴ジャンプできません"
                   : "クリックでこの時点まで巻き戻します"
               }
@@ -483,7 +517,7 @@ return (
               {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
-          <li ref={historyEndRef} className="history-end"/>
+          <li ref={historyEndRef} className="history-end" />
         </ul>
       </section>
     </div >
