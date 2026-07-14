@@ -19,16 +19,15 @@ body {
 
 /* 左ツールバー */
 .tool {
-  width: 160px;
+  width: 180px;
   height: 100vh;
-
   padding: 16px;
 
   background: #222;
 
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 
   flex-shrink: 0;
 }
@@ -69,6 +68,23 @@ body {
 .history-buttons {
   display: flex;
   gap: 6px;
+}
+.shape-buttons{
+    display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.shape-buttons button {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+
+  border: none;
+  border-radius: 6px;
+
+  cursor: pointer;
 }
 
 /* アイコンボタン */
@@ -159,11 +175,15 @@ body {
   cursor: move;
   user-select: none;
 }
-
 .shape-body {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* 四角形 */
+.shape.rect .shape-body {
+  border-radius: 0;
 }
 
 /* 円 */
@@ -180,14 +200,66 @@ body {
   );
 }
 
-/* テキスト */
+/* テキスト全体 */
 .shape.text .shape-body {
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
+  display: block;
+
   background: transparent;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+
+  pointer-events: auto;
 }
+
+/* 通常表示されるテキスト */
+.text-value {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+
+  line-height: 1.2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  pointer-events: none;
+}
+
+/* 編集中の入力欄 */
+.text-editor {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+
+  border: none;
+  outline: none;
+  resize: none;
+
+  background: transparent;
+  color: inherit;
+
+  font: inherit;
+  line-height: 1.2;
+
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 編集中は文字入力カーソル */
+.shape.text.editing {
+  cursor: text;
+  user-select: text;
+}
+
+/* 編集中は選択枠を少し分かりやすくする */
+.shape.text.editing {
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+}
+
+
 /* 選択中の図形 */
 .shape.selected {
   outline: 2px solid #4d11bd;
