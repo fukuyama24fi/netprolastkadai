@@ -96,6 +96,21 @@ class SocketService {
     this.socket.off("message", callback);
   }
 
+  //Undo送信（ボタン用・1回1件処理）
+  undo() {
+    this.sendMessage("UNDO");
+  }
+
+  //Redo送信（ボタン用・1回1件処理）
+  redo() {
+    this.sendMessage("REDO");
+  }
+
+  //履歴ジャンプ送信（指定した履歴IDまで巻き戻す）
+  jumpToHistory(targetId) {
+    this.sendMessage("JUMP_TO_HISTORY", { targetId });
+  }
+
   disconnect() {
     if (!this.socket) {
       return;

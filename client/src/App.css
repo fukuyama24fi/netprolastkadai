@@ -185,3 +185,51 @@ body {
   height: 1px;
   list-style: none;
 }
+
+/*Undo/Redoボタンコンテナ*/
+.undo-redo-controls {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+/*Undoボタン*/
+.undo-button,
+.redo-button {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 18px;
+  font-weight: bold;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.undo-button:hover,
+.redo-button:hover {
+  background-color: #e0e0e0;
+  border-color: #999;
+}
+
+.undo-button:active,
+.redo-button:active {
+  background-color: #d0d0d0;
+  transform: scale(0.95);
+}
+
+/*履歴リストクリック時のスタイル*/
+.history-list li {
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.history-list li:hover {
+  background-color: #e8f4ff;
+}
+
+.history-list li:active {
+  background-color: #d0e8ff;
+}

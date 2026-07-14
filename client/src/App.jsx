@@ -18,6 +18,9 @@ const App = () => {
     updateRect,
     deleteRect,
     clearCanvas,
+    undo,           //Undo関数を取得
+    redo,           //Redo関数を取得
+    jumpToHistory,  //履歴ジャンプ関数を取得
   } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -45,7 +48,7 @@ const App = () => {
       behavior: "smooth",
       block: "end",
     });
-  },[history]);
+  }, [history]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -85,37 +88,37 @@ const App = () => {
   };
 
   const autoScrollMain = (event) => {
-  const main = mainRef.current;
+    const main = mainRef.current;
 
-  if (!main) {
-    return;
-  }
+    if (!main) {
+      return;
+    }
 
-  const rect = main.getBoundingClientRect();
+    const rect = main.getBoundingClientRect();
 
-  const edgeSize = 80;
-  const scrollSpeed = 24;
+    const edgeSize = 80;
+    const scrollSpeed = 24;
 
-  // 右端に近い
-  if (event.clientX > rect.right - edgeSize) {
-    main.scrollLeft += scrollSpeed;
-  }
+    // 右端に近い
+    if (event.clientX > rect.right - edgeSize) {
+      main.scrollLeft += scrollSpeed;
+    }
 
-  // 左端に近い
-  if (event.clientX < rect.left + edgeSize) {
-    main.scrollLeft -= scrollSpeed;
-  }
+    // 左端に近い
+    if (event.clientX < rect.left + edgeSize) {
+      main.scrollLeft -= scrollSpeed;
+    }
 
-  // 下端に近い
-  if (event.clientY > rect.bottom - edgeSize) {
-    main.scrollTop += scrollSpeed;
-  }
+    // 下端に近い
+    if (event.clientY > rect.bottom - edgeSize) {
+      main.scrollTop += scrollSpeed;
+    }
 
-  // 上端に近い
-  if (event.clientY < rect.top + edgeSize) {
-    main.scrollTop -= scrollSpeed;
-  }
-};
+    // 上端に近い
+    if (event.clientY < rect.top + edgeSize) {
+      main.scrollTop -= scrollSpeed;
+    }
+  };
 
   const handleAddRect = () => {
     addRect();
@@ -133,48 +136,48 @@ const App = () => {
 
     const targetId = selectedId;
 
-    setViewShapes((prev)=>{
-      const next = prev.filter((shape)=>{
+    setViewShapes((prev) => {
+      const next = prev.filter((shape) => {
         return shape.id !== targetId;
       });
 
       viewShapesRef.current = next;
     });
 
-    
+
     setSelectedId(null);
     setInteraction(null);
     deleteRect(selectedId);
-    
+
   };
 
- useEffect(() => {
-  const handleKeyDown = (event) => {
-    if (event.key !== "Delete" && event.key !== "Backspace") {
-      return;
-    }
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
 
-    if (!selectedId) {
-      return;
-    }
+      if (!selectedId) {
+        return;
+      }
 
-    // 入力欄を編集中なら削除しない
-    const tagName = document.activeElement?.tagName;
+      // 入力欄を編集中なら削除しない
+      const tagName = document.activeElement?.tagName;
 
-    if (tagName === "INPUT" || tagName === "TEXTAREA") {
-      return;
-    }
+      if (tagName === "INPUT" || tagName === "TEXTAREA") {
+        return;
+      }
 
-    event.preventDefault();
-    handleDeleteSelected();
-  };
+      event.preventDefault();
+      handleDeleteSelected();
+    };
 
-  window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
 
-  return () => {
-    window.removeEventListener("keydown", handleKeyDown);
-  };
-}, [selectedId]);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedId]);
 
   const handleColorChange = (event) => {
     if (!selectedId) {
@@ -190,6 +193,21 @@ const App = () => {
     updateRect(selectedId, {
       fill,
     });
+  };
+
+  //Undoボタン処理
+  const handleUndo = () => {
+    undo();
+  };
+
+  //Redoボタン処理
+  const handleRedo = () => {
+    redo();
+  };
+
+  //履歴クリック時の処理（ジャンプ）
+  const handleHistoryClick = (historyItem) => {
+    jumpToHistory(historyItem.id);
   };
 
 
@@ -399,7 +417,12 @@ const App = () => {
           />
         </div>
 
-        <ul className="history-list">
+        <ul className="history-list"
+          //履歴クリックで該当の時点まで巻き戻し
+          onClick={() => handleHistoryClick(h)}
+          style={{ cursor: "pointer" }}
+          title="クリックでこの時点まで巻き戻します"
+          >
           {history.map((h, i) => (
             <li key={i}>
               {new Date(h.createdAt).toLocaleTimeString()} - {h.action}
@@ -408,7 +431,7 @@ const App = () => {
               {h.userName || h.userId?.slice(0, 8)}
             </li>
           ))}
-          <li ref={historyEndRef} className="history-end"/>
+          <li ref={historyEndRef} className="history-end" />
         </ul>
       </section>
     </div>

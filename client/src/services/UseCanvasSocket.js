@@ -184,6 +184,21 @@ export function useCanvasSocket() {
     });
   };
 
+  //Undo（矢印ボタン用・1回1件）
+  const undo = () => {
+    socketService.undo();
+  };
+
+  //Redo（矢印ボタン用・1回1件）
+  const redo = () => {
+    socketService.redo();
+  };
+
+  //履歴ジャンプ（履歴クリック時・N回ループ + 最終状態配信）
+  const jumpToHistory = (historyId) => {
+    socketService.jumpToHistory(historyId);
+  };
+
   return {
     shapes,
     history,

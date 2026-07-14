@@ -76,7 +76,7 @@ async function sendHistory(socket) {
              ORDER BY h.created_at DESC
              LIMIT 100`
         );
-        
+
         //psqlのpgライブラリはJSONBを自動的にオブジェクトに変換する
         const formattedHistory = result.rows.map(row => ({
             id: row.id,
@@ -90,7 +90,7 @@ async function sendHistory(socket) {
             originalAction: row.originalAction,
             createdAt: row.createdAt
         }));
-        
+
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
             history: formattedHistory.reverse()
@@ -279,7 +279,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         objectId: null,
                         userId,
                         userName,
-                        before: beforeObjects, 
+                        before: beforeObjects,
                         after: null
                     });
                     io.emit("message", { ...data, history: historyEntry });
@@ -359,6 +359,12 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             broadcastAction = { action: "INIT", objects: beforeArray };
                             break;
                         }
+                        //Undo/Redoは逆操作しない
+                        default:
+                            if (targetEntry.action === "UNDO" || targetEntry.action === "REDO") {
+                                console.log("UNDOまたはREDOが履歴の最後のため、スキップします");
+                                break;
+                            }
                     }
 
                     //UNDO自体を履歴に記録
@@ -467,6 +473,134 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                 } catch (err) {
                     console.error("REDO処理失敗:", err);
+                }
+                break;
+            }
+
+            // 履歴からのジャンプ機能（内部でN回ループしてから最終状態を配信）
+            case "JUMP_TO_HISTORY": {
+                try {
+                    const targetHistoryId = data.targetId; //ジャンプ先の履歴ID
+
+                    if (!targetHistoryId) {
+                        console.log("targetIdが指定されていません");
+                        break;
+                    }
+
+                    //ターゲットの履歴行を取得
+                    const targetResult = await pool.query(
+                        `SELECT * FROM edit_history WHERE id = $1`,
+                        [targetHistoryId]
+                    );
+
+                    if (!targetResult.rows.length) {
+                        console.log("指定された履歴が見つかりません:", targetHistoryId);
+                        break;
+                    }
+
+                    const targetEntry = targetResult.rows[0];
+
+                    //現在の最後の行を取得
+                    const currentLastResult = await pool.query(
+                        `SELECT * FROM edit_history ORDER BY id DESC LIMIT 1`
+                    );
+
+                    if (!currentLastResult.rows.length) {
+                        console.log("履歴が存在しません");
+                        break;
+                    }
+
+                    const currentLastId = currentLastResult.rows[0].id;
+
+                    //ターゲットがすでに現在の状態と同じなら何もしない
+                    if (targetHistoryId === currentLastId) {
+                        console.log("すでにその状態です");
+                        break;
+                    }
+
+                    //ターゲットより後ろの履歴を全て取得
+                    const laterEntriesResult = await pool.query(
+                        `SELECT * FROM edit_history 
+                         WHERE id > $1 
+                         ORDER BY id DESC`,
+                        [targetHistoryId]
+                    );
+
+                    const laterEntries = laterEntriesResult.rows;
+
+                    //後ろの履歴を逆順（古い順）に処理してUNDOしていく
+                    for (const entry of laterEntries.reverse()) {
+                        // すでにUNDOされているものはスキップ
+                        if (entry.action === "UNDO" || entry.action === "REDO") {
+                            continue;
+                        }
+
+                        //逆操作を実行
+                        switch (entry.action) {
+                            case "ADD": {
+                                await pool.query('DELETE FROM canvas_objects WHERE id = $1', [entry.object_id]);
+                                canvasState = canvasState.filter(obj => obj.id !== entry.object_id);
+                                break;
+                            }
+
+                            case "UPDATE": {
+                                const beforeData = entry.before;
+                                await pool.query(
+                                    `UPDATE canvas_objects SET x = $1, y = $2, width = $3, height = $4, fill = $5, text = $6
+                             WHERE id = $7`,
+                                    [beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text, entry.object_id]
+                                );
+                                const obj = canvasState.find(o => o.id === entry.object_id);
+                                if (obj) Object.assign(obj, beforeData);
+                                break;
+                            }
+
+                            case "DELETE": {
+                                const beforeData = entry.before;
+                                await pool.query(
+                                    `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                    [beforeData.id, beforeData.type, beforeData.x, beforeData.y, beforeData.width, beforeData.height, beforeData.fill, beforeData.text]
+                                );
+                                canvasState.push(beforeData);
+                                break;
+                            }
+
+                            case "CLEAR": {
+                                const beforeArray = entry.before;
+                                await pool.query('DELETE FROM canvas_objects');
+                                for (const obj of beforeArray) {
+                                    await pool.query(
+                                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text)
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                        [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
+                                    );
+                                }
+                                canvasState = beforeArray;
+                                break;
+                            }
+                        }
+
+                        //ジャンプ自体も履歴に記録
+                        await saveEditHistory({
+                            action: "UNDO",
+                            objectId: entry.object_id,
+                            userId,
+                            userName,
+                            before: null,
+                            after: null,
+                            revertedEntryId: entry.id
+                        });
+                    }
+
+                    //ループが終わったら、最終状態をINIT形式で1回だけ配信
+                    io.emit("message", {
+                        action: "INIT",
+                        objects: canvasState
+                    });
+
+                } catch (err) {
+                    console.error("JUMP_TO_HISTORY処理失敗:", err);
                 }
                 break;
             }
