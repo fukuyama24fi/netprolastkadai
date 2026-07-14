@@ -24,6 +24,8 @@ const App = () => {
     undo,           //Undo関数を取得
     redo,           //Redo関数を取得
     jumpToHistory,  //履歴ジャンプ関数を取得
+    exportedHtml,
+    exportCode,
   } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -561,6 +563,28 @@ const App = () => {
           <button type="button" onClick={handleClearCanvas}>
             全て消去
           </button>
+
+          {/* エクスポートする場所 */}
+          <hr style={{ width: "100%", borderColor: "#444", margin: "10px 0" }} />
+
+          <button
+            type="button"
+            onClick={exportCode}
+            style={{ background: "#27ae60" }} // 少し目立つ色にする
+          >
+            コードを出力
+          </button>
+
+          {exportedHtml && (
+            <div className="export-container">
+              <textarea
+                className="export-textarea"
+                readOnly
+                value={exportedHtml}
+                placeholder="ここにコードが出力されます"
+              />
+            </div>
+          )}
         </aside >
 
         <main ref={mainRef} className="main">

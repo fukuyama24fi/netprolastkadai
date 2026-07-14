@@ -175,6 +175,36 @@ body {
   background: #e74c3c !important;
 }
 
+/* コード出力エリアのコンテナ */
+.export-container {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  flex: 1; /* ツールバーの余った高さを全て使う */
+  min-height: 150px;
+}
+
+/* コードを表示するテキストエリア */
+.export-textarea {
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  border-radius: 6px;
+  
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  
+  resize: vertical; /* 縦方向だけリサイズ可能 */
+  outline: none;
+  white-space: pre; /* コードの改行をそのまま維持 */
+  overflow: auto;
+}
+
 /* カラーピッカー */
 .color-tool {
   margin-top: 8px;

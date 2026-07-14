@@ -139,6 +139,25 @@ export function useCanvasSocket() {
     };
   }, [addHistoryIfNeeded]);
 
+  // 1. エクスポートされたHTMLを保持するState
+const [exportedHtml, setExportedHtml] = useState("");
+
+// 2. socketのメッセージ受信部分（socket.on("message", ...)）の中に分岐を追加
+if (data.action === "EXPORT_RESULT") {
+  setExportedHtml(data.html);
+}
+
+// 3. エクスポートをリクエストする関数
+const exportCode = useCallback(() => {
+  //送信メソッド
+  socketService.sendMessage("EXPORT", { userId });
+}, [userId]);
+
+return {
+  exportedHtml,
+  exportCode,
+};
+
   const setUserName = useCallback((name) => {
     const nextName =
       name.trim() || "名無し";
