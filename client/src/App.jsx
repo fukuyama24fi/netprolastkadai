@@ -61,31 +61,38 @@ const App = () => {
     })
   );
 
-  const canvasHeigth = Math.max(
+  const canvasHeight = Math.max(
     1400,
     ...viewShapes.map((shape) => {
       return shape.y + shape.height + 400;
     })
   );
 
-  const updateShapeLocal = (id, changes) => {
-    setViewShapes((prev) => {
-      const next = prev.map((shape) => {
-        if (shape.id !== id) {
-          return shape;
-        }
+ const handleDeleteSelected = () => {
+  if (!selectedId) {
+    return;
+  }
 
-        return {
-          ...shape,
-          ...changes,
-        };
-      });
+  const targetId = selectedId;
 
-      viewShapesRef.current = next;
-
-      return next;
+  // 先に画面上から消す
+  setViewShapes((prev) => {
+    const next = prev.filter((shape) => {
+      return shape.id !== targetId;
     });
-  };
+
+    viewShapesRef.current = next;
+
+    return next;
+  });
+
+  // 選択状態を解除
+  setSelectedId(null);
+  setInteraction(null);
+
+  // サーバーへ削除通知
+  deleteRect(targetId);
+};
 
   const autoScrollMain = (event) => {
     const main = mainRef.current;
@@ -151,33 +158,91 @@ const App = () => {
 
   };
 
+<<<<<<< HEAD
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key !== "Delete" && event.key !== "Backspace") {
         return;
       }
+||||||| 9e5a606
+ useEffect(() => {
+  const handleKeyDown = (event) => {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+=======
+useEffect(() => {
+  const handleKeyDown = (event) => {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+>>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
       if (!selectedId) {
         return;
       }
 
+<<<<<<< HEAD
       // 入力欄を編集中なら削除しない
       const tagName = document.activeElement?.tagName;
+||||||| 9e5a606
+    // 入力欄を編集中なら削除しない
+    const tagName = document.activeElement?.tagName;
+=======
+    const tagName = document.activeElement?.tagName;
+>>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
       if (tagName === "INPUT" || tagName === "TEXTAREA") {
         return;
       }
 
+<<<<<<< HEAD
       event.preventDefault();
       handleDeleteSelected();
     };
+||||||| 9e5a606
+    event.preventDefault();
+    handleDeleteSelected();
+  };
+=======
+    event.preventDefault();
+
+    const targetId = selectedId;
+
+    setViewShapes((prev) => {
+      const next = prev.filter((shape) => {
+        return shape.id !== targetId;
+      });
+
+      viewShapesRef.current = next;
+
+      return next;
+    });
+
+    setSelectedId(null);
+    setInteraction(null);
+    deleteRect(targetId);
+  };
+>>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
     window.addEventListener("keydown", handleKeyDown);
 
+<<<<<<< HEAD
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [selectedId]);
+||||||| 9e5a606
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [selectedId]);
+=======
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [selectedId, deleteRect]);
+>>>>>>> 13fd63b997454ccee30fd50f59d4365b467b3d48
 
   const handleColorChange = (event) => {
     if (!selectedId) {
@@ -375,7 +440,7 @@ const App = () => {
       </aside>
 
       <main ref={mainRef} className="main">
-        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeigth}px` }}>
+        <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
           {viewShapes.map((shape) => {
             const isSelected = shape.id === selectedId;
 
