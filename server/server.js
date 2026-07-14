@@ -59,15 +59,42 @@ async function saveEditHistory({ action, objectId, userId, userName, before, aft
 // 直近100件だけ取得（全件だと数が増えたとき重くなるので）
 async function sendHistory(socket) {
     try {
+        //履歴を取得（元の履歴行がある場合はJOINして取得）
         const result = await pool.query(
-            `SELECT action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", changes, created_at AS "createdAt"
-             FROM edit_history
-             ORDER BY created_at DESC
+            `SELECT 
+                h.id,
+                h.action, 
+                h.object_id AS "objectId", 
+                h.user_id AS "userId", 
+                h.user_name AS "userName", 
+                h.before, 
+                h.after,
+                h.reverted_entry_id AS "revertedEntryId",
+                h.created_at AS "createdAt",
+                orig.action AS "originalAction"
+             FROM edit_history h
+             LEFT JOIN edit_history orig ON h.reverted_entry_id = orig.id
+             ORDER BY h.created_at DESC
              LIMIT 100`
         );
+        
+        // JSONBをパースして、履歴一覧に合わせた形式に変換
+        const formattedHistory = result.rows.map(row => ({
+            id: row.id,
+            action: row.action,
+            objectId: row.objectId,
+            userId: row.userId,
+            userName: row.userName,
+            before: row.before ? JSON.parse(row.before) : null,
+            after: row.after ? JSON.parse(row.after) : null,
+            revertedEntryId: row.revertedEntryId,
+            originalAction: row.originalAction,
+            createdAt: row.createdAt
+        }));
+        
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-            history: result.rows.reverse() //DESC(新しい順)で取ってきたので、古い順に並べ直してから渡す
+            history: formattedHistory.reverse() //古い順に
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
