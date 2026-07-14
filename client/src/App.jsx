@@ -487,7 +487,7 @@ const App = () => {
           PNG出力
         </button>
       </header>
-      <div>
+      <div className="app-body">
         <aside className="tool">
           <h1>Pikva</h1>
 
