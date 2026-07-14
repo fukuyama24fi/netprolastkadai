@@ -522,7 +522,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         break;
                     }
 
-                    // 1. メモリ(canvasState)の逆操作・書き換え
+                    //メモリ(canvasState)の逆操作・書き換え
                     switch (targetEntry.action) {
                         case "ADD": {
                             canvasState = canvasState.filter(obj => obj.id !== targetEntry.objectId);
@@ -544,7 +544,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
                     }
 
-                    // 2. DB(canvas_objects)へ一括反映
+                    //DB(canvas_objects)へ一括反映
                     await pool.query('BEGIN');
                     await pool.query('DELETE FROM canvas_objects');
                     for (const obj of canvasState) {
@@ -555,10 +555,26 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     }
                     await pool.query('COMMIT');
 
+                    //クライアントの履歴を同期する
+                    //UNDO/REDOでは削除がないので、historyList全体を送信
+                    io.emit("message", {
+                        action: "HISTORY_RESPONSE",
+                        history: historyList.map(h => ({
+                            id: h.id,
+                            action: h.action,
+                            objectId: h.objectId,
+                            userId: h.userId,
+                            userName: h.userName,
+                            before: h.before,
+                            after: h.after,
+                            createdAt: h.createdAt
+                        }))
+                    });
+
                     historyPointer--;
                     console.log(`UNDO実行: pointer → ${historyPointer}`);
 
-                    // 設計書通り、INIT形式で全員に再同期
+                    //キャンバス状態も同期
                     io.emit("message", {
                         action: "INIT",
                         objects: canvasState
@@ -587,7 +603,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         break;
                     }
 
-                    // 1. メモリ(canvasState)の順操作・書き換え
+                    //メモリ(canvasState)の順操作・書き換え
                     switch (targetEntry.action) {
                         case "ADD": {
                             canvasState.push(targetEntry.after);
@@ -609,7 +625,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
                     }
 
-                    // 2. DB(canvas_objects)へ一括反映
+                    //DB(canvas_objects)へ一括反映
                     await pool.query('BEGIN');
                     await pool.query('DELETE FROM canvas_objects');
                     for (const obj of canvasState) {
@@ -623,7 +639,22 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer++;
                     console.log(`REDO実行: pointer → ${historyPointer}`);
 
-                    // 設計書通り、INIT形式で全員に再同期
+                    //クライアントの履歴を同期する
+                    io.emit("message", {
+                        action: "HISTORY_RESPONSE",
+                        history: historyList.map(h => ({
+                            id: h.id,
+                            action: h.action,
+                            objectId: h.objectId,
+                            userId: h.userId,
+                            userName: h.userName,
+                            before: h.before,
+                            after: h.after,
+                            createdAt: h.createdAt
+                        }))
+                    });
+
+                    //キャンバス状態も同期
                     io.emit("message", {
                         action: "INIT",
                         objects: canvasState
