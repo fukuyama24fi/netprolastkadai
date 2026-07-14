@@ -84,20 +84,6 @@ async function sendHistory(socket) {
              LIMIT 100`
         );
 
-        //psqlのpgライブラリはJSONBを自動的にオブジェクトに変換する
-        const formattedHistory = result.rows.map(row => ({
-            id: row.id,
-            action: row.action,
-            objectId: row.objectId,
-            userId: row.userId,
-            userName: row.userName,
-            before: row.before,
-            after: row.after,
-            revertedEntryId: row.revertedEntryId,
-            originalAction: row.originalAction,
-            createdAt: row.createdAt
-        }));
-
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
             history: formattedHistory.reverse()
@@ -149,6 +135,34 @@ async function reloadHistoryListFromDB() {
         console.error("historyListの再読み込み失敗:", err);
     }
 }
+
+// pointerより後ろの履歴を切り捨てる。切り捨てが発生した場合はtrueを返す
+async function truncateHistoryAfterPointer() {
+    if (historyPointer >= historyList.length - 1) {
+        return false; // 最新地点にいるので切り捨てるものがない
+    }
+    //ポインター以降のデータをDBからも削除
+    const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
+    if (idsToDelete.length > 0) {
+        await pool.query(`DELETE FROM edit_history WHERE id = ANY($1)`, [idsToDelete]);
+    }
+    historyList = historyList.slice(0, historyPointer + 1);
+    return true;
+}
+
+// canvasStateの内容でcanvas_objectsテーブルを丸ごと書き換える
+async function syncCanvasObjectsToDB() {
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM canvas_objects');
+    for (const obj of canvasState) {
+        await pool.query(
+            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
+        );
+    }
+    await pool.query('COMMIT');
+}
+
 
 
 //サーバー起動時にDBから初期データを読み込む
@@ -209,15 +223,7 @@ async function startServer() {
         canvasState = reconstructedState;
 
         //再起動でポインターが末尾に戻るため、DB(canvas_objects)側もこの最新状態で強制上書き同期する
-        await pool.query('BEGIN');
-        await pool.query('DELETE FROM canvas_objects');
-        for (const obj of canvasState) {
-            await pool.query(
-                'INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-                [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
-            );
-        }
-        await pool.query('COMMIT');
+        await syncCanvasObjectsToDB();
 
         console.log(`初期データ再構築＆同期完了 (${canvasState.length}件), pointer: ${historyPointer}`);
 
@@ -287,17 +293,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     canvasState.push(data.object);
 
                     //新しい編集が来たら、ポインター後ろを削除
-                    if (historyPointer < historyList.length - 1) {
-                        //ポインター以降のデータをDBからも削除
-                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
-                        if (idsToDelete.length > 0) {
-                            await pool.query(
-                                `DELETE FROM edit_history WHERE id = ANY($1)`,
-                                [idsToDelete]
-                            );
-                        }
-                        // メモリ上のhistoryListも削除
-                        historyList = historyList.slice(0, historyPointer + 1);
+                    if (await truncateHistoryAfterPointer()) {
+                        await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
                     //DBから再読み込みしてメモリとDBを同期
                     await reloadHistoryListFromDB();
@@ -312,17 +309,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: data.object
                     });
 
-                    //メモリのhistoryListに追加してポインター更新
-                    historyList.push({
-                        id: historyEntry.id,
-                        action: historyEntry.action,
-                        objectId: historyEntry.objectId,
-                        userId: historyEntry.userId,
-                        userName: historyEntry.userName,
-                        before: historyEntry.before,
-                        after: historyEntry.after,
-                        createdAt: historyEntry.createdAt
-                    });
+                    //履歴に記録
+                    historyList.push(historyEntry);
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry }); //全員に送信
@@ -360,15 +348,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                 try {
                     //ポインター後ろを削除
-                    if (historyPointer < historyList.length - 1) {
-                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
-                        if (idsToDelete.length > 0) {
-                            await pool.query(
-                                `DELETE FROM edit_history WHERE id = ANY($1)`,
-                                [idsToDelete]
-                            );
-                        }
-                        historyList = historyList.slice(0, historyPointer + 1);
+                    if (await truncateHistoryAfterPointer()) {
+                        await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
 
                     //DBから再読み込みしてメモリとDBを同期
@@ -402,16 +383,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         before: beforeState,
                         after: obj
                     });
-                    historyList.push({
-                        id: historyEntry.id,
-                        action: historyEntry.action,
-                        objectId: historyEntry.objectId,
-                        userId: historyEntry.userId,
-                        userName: historyEntry.userName,
-                        before: historyEntry.before,
-                        after: historyEntry.after,
-                        createdAt: historyEntry.createdAt
-                    });
+
+                    //履歴に記録
+                    historyList.push(historyEntry);
                     historyPointer = historyList.length - 1;
 
                     //全員に通知
@@ -428,15 +402,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
             case "DELETE": {
                 try {
                     //ポインター後ろを削除
-                    if (historyPointer < historyList.length - 1) {
-                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
-                        if (idsToDelete.length > 0) {
-                            await pool.query(
-                                `DELETE FROM edit_history WHERE id = ANY($1)`,
-                                [idsToDelete]
-                            );
-                        }
-                        historyList = historyList.slice(0, historyPointer + 1);
+                    if (await truncateHistoryAfterPointer()) {
+                        await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
 
                     //DBから再読み込みしてメモリとDBを同期
@@ -459,16 +426,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: null
                     });
 
-                    historyList.push({
-                        id: historyEntry.id,
-                        action: historyEntry.action,
-                        objectId: historyEntry.objectId,
-                        userId: historyEntry.userId,
-                        userName: historyEntry.userName,
-                        before: historyEntry.before,
-                        after: historyEntry.after,
-                        createdAt: historyEntry.createdAt
-                    });
+                    //履歴に記録
+                    historyList.push(historyEntry);
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry });
@@ -482,15 +441,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
             case "CLEAR": {
                 try {
                     //ポインター後ろを削除 
-                    if (historyPointer < historyList.length - 1) {
-                        const idsToDelete = historyList.slice(historyPointer + 1).map(h => h.id);
-                        if (idsToDelete.length > 0) {
-                            await pool.query(
-                                `DELETE FROM edit_history WHERE id = ANY($1)`,
-                                [idsToDelete]
-                            );
-                        }
-                        historyList = historyList.slice(0, historyPointer + 1);
+                    if (await truncateHistoryAfterPointer()) {
+                        await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
 
                     //DBから再読み込みしてメモリとDBを同期
@@ -511,16 +463,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: null
                     });
 
-                    historyList.push({
-                        id: historyEntry.id,
-                        action: historyEntry.action,
-                        objectId: historyEntry.objectId,
-                        userId: historyEntry.userId,
-                        userName: historyEntry.userName,
-                        before: historyEntry.before,
-                        after: historyEntry.after,
-                        createdAt: historyEntry.createdAt
-                    });
+                    //履歴に記録
+                    historyList.push(historyEntry);
                     historyPointer = historyList.length - 1;
 
                     io.emit("message", { ...data, history: historyEntry });
@@ -568,19 +512,11 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     }
 
                     //DB(canvas_objects)へ一括反映
-                    await pool.query('BEGIN');
-                    await pool.query('DELETE FROM canvas_objects');
-                    for (const obj of canvasState) {
-                        await pool.query(
-                            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
-                        );
-                    }
-                    await pool.query('COMMIT');
+                   await syncCanvasObjectsToDB();
 
-                    broadcastHistory();
                     historyPointer--;
                     console.log(`UNDO実行: pointer → ${historyPointer}`);
+                    broadcastHistory();
 
                     //キャンバス状態も同期
                     io.emit("message", {
@@ -634,19 +570,10 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     }
 
                     //DB(canvas_objects)へ一括反映
-                    await pool.query('BEGIN');
-                    await pool.query('DELETE FROM canvas_objects');
-                    for (const obj of canvasState) {
-                        await pool.query(
-                            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
-                        );
-                    }
-                    await pool.query('COMMIT');
+                    await syncCanvasObjectsToDB();
 
                     historyPointer++;
                     console.log(`REDO実行: pointer → ${historyPointer}`);
-
                     broadcastHistory();
 
                     //キャンバス状態も同期
@@ -745,15 +672,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     historyPointer = targetIndex;
 
                     //ループ完了後に、最終的な状態をDB（canvas_objects）へ一括書き込みする（クエリは1回）
-                    await pool.query('BEGIN');
-                    await pool.query('DELETE FROM canvas_objects');
-                    for (const obj of canvasState) {
-                        await pool.query(
-                            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
-                        );
-                    }
-                    await pool.query('COMMIT');
+                    await syncCanvasObjectsToDB();
 
                     console.log(`JUMP_TO_HISTORY実行完了: targetIndex ${targetIndex}, DB同期完了`);
 
