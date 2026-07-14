@@ -99,18 +99,22 @@ const App = () => {
     const edgeSize = 80;
     const scrollSpeed = 24;
 
+    //右側に近い
     if (event.clientX > rect.right - edgeSize) {
       main.scrollLeft += scrollSpeed;
     }
 
+    //左側に近い
     if (event.clientX < rect.left + edgeSize) {
       main.scrollLeft -= scrollSpeed;
     }
 
+    //下側に近い
     if (event.clientY > rect.bottom - edgeSize) {
       main.scrollTop += scrollSpeed;
     }
 
+    //上側に近い
     if (event.clientY < rect.top + edgeSize) {
       main.scrollTop -= scrollSpeed;
     }
@@ -151,56 +155,6 @@ const App = () => {
   deleteRect(targetId);
 
   }, [selectedId, deleteRect]);
-
-
-  const autoScrollMain = (event) => {
-    const main = mainRef.current;
-
-    if (!main) {
-      return;
-    }
-
-    const rect = main.getBoundingClientRect();
-
-    const edgeSize = 80;
-    const scrollSpeed = 24;
-
-    // 右端に近い
-    if (event.clientX > rect.right - edgeSize) {
-      main.scrollLeft += scrollSpeed;
-    }
-
-    // 左端に近い
-    if (event.clientX < rect.left + edgeSize) {
-      main.scrollLeft -= scrollSpeed;
-    }
-
-    // 下端に近い
-    if (event.clientY > rect.bottom - edgeSize) {
-      main.scrollTop += scrollSpeed;
-    }
-
-    // 上端に近い
-    if (event.clientY < rect.top + edgeSize) {
-      main.scrollTop -= scrollSpeed;
-    }
-  };
-
-  const handleAddRect = () => {
-    addRect();
-  };
-
-  const handleClearCanvas = () => {
-    clearCanvas();
-    setSelectedId(null);
-  };
-
-  const handleDeleteSelected = () => {
-    if (!selectedId) {
-      return;
-    }
-
-  };
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -419,7 +373,7 @@ const App = () => {
           <button
             type="button"
             className="icon-button"
-            onClick={handleUndo}
+            onClick={handleRedo}
             title="Undo"
           >
             ↷
