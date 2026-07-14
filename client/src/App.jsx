@@ -26,16 +26,19 @@ const App = () => {
     jumpToHistory,  //履歴ジャンプ関数を取得
   } = useCanvasSocket();
 
-  const [viewShapes, setViewShapes] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [interaction, setInteraction] = useState(null);
+ const [viewShapes, setViewShapes] = useState([]);
+const [selectedId, setSelectedId] = useState(null);
+const [interaction, setInteraction] = useState(null);
 
-  const canvasRef = useRef(null);
-  const viewShapesRef = useRef([]);
-  const didMoveRef = useRef(false);
-  const mainRef = useRef(null);
-  const historyEndRef = useRef(null);
+const [editingId, setEditingId] = useState(null);
+const [draftText, setDraftText] = useState("");
 
+const canvasRef = useRef(null);
+const viewShapesRef = useRef([]);
+const didMoveRef = useRef(false);
+const mainRef = useRef(null);
+const historyEndRef = useRef(null);
+const cancelTextEditRef = useRef(false);
   // サーバーから来たshapesを画面表示用stateに反映する
   useEffect(() => {
     // ドラッグ中・リサイズ中は、操作中の見た目を優先する
@@ -203,36 +206,65 @@ const App = () => {
     });
   };
 
-  const handleTextEdit = useCallback(
-  (event, shape) => {
-    event.stopPropagation();
+  // テキストの編集を開始
+const startTextEditing = useCallback((event, shape) => {
+  event.stopPropagation();
 
-    if (shape.type !== "text") {
+  if (shape.type !== "text") {
+    return;
+  }
+
+  cancelTextEditRef.current = false;
+
+  setSelectedId(shape.id);
+  setInteraction(null);
+  setDraftText(shape.text || "");
+  setEditingId(shape.id);
+}, []);
+
+// 編集内容を保存
+const finishTextEditing = useCallback(
+  (shapeId) => {
+    // Escキーでキャンセルされた場合
+    if (cancelTextEditRef.current) {
+      cancelTextEditRef.current = false;
+      setEditingId(null);
       return;
     }
 
-    const nextText = window.prompt(
-      "テキストを入力してください",
-      shape.text || ""
-    );
-
-    // キャンセルされた場合
-    if (nextText === null) {
-      return;
-    }
-
-    // 画面に即時反映
-    updateShapeLocal(shape.id, {
-      text: nextText,
+    updateShapeLocal(shapeId, {
+      text: draftText,
     });
 
-    // サーバーにも保存
-    updateRect(shape.id, {
-      text: nextText,
+    updateRect(shapeId, {
+      text: draftText,
     });
+
+    setEditingId(null);
   },
-  [updateShapeLocal, updateRect]
+  [draftText, updateShapeLocal, updateRect]
 );
+
+// 編集中のキー操作
+const handleTextKeyDown = useCallback((event) => {
+  // Enterで保存
+  // Shift + Enterなら改行
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    event.currentTarget.blur();
+    return;
+  }
+
+  // Escで変更をキャンセル
+  if (event.key === "Escape") {
+    event.preventDefault();
+
+    cancelTextEditRef.current = true;
+    event.currentTarget.blur();
+  }
+}, []);
+
+
   //Undoボタン処理
   const handleUndo = useCallback(() => {
     undo();
@@ -478,10 +510,11 @@ const App = () => {
 
       <main ref={mainRef} className="main">
         <div ref={canvasRef} className="canvas" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
-          {viewShapes.map((shape) => {
+         {viewShapes.map((shape) => {
   const isSelected = shape.id === selectedId;
   const shapeType = shape.type || "rect";
   const isText = shapeType === "text";
+  const isEditing = editingId === shape.id;
 
   return (
     <div
@@ -490,9 +523,20 @@ const App = () => {
         "shape",
         shapeType,
         isSelected ? "selected" : "",
+        isEditing ? "editing" : "",
       ].join(" ")}
-      onMouseDown={(event) => startDrag(event, shape)}
-      onDoubleClick={(event) => handleTextEdit(event, shape)}
+      onMouseDown={(event) => {
+        // テキスト編集中はドラッグを開始しない
+        if (isEditing) {
+          event.stopPropagation();
+          return;
+        }
+
+        startDrag(event, shape);
+      }}
+      onDoubleClick={(event) => {
+        startTextEditing(event, shape);
+      }}
       style={{
         left: `${shape.x}px`,
         top: `${shape.y}px`,
@@ -506,21 +550,53 @@ const App = () => {
           backgroundColor: isText
             ? "transparent"
             : shape.fill,
+
           color: isText
             ? shape.fill
             : undefined,
+
           fontSize: isText
             ? `${shape.fontSize || 24}px`
             : undefined,
         }}
       >
-        {isText ? shape.text || "テキスト" : null}
+        {isText && isEditing ? (
+          <textarea
+            autoFocus
+            className="text-editor"
+            value={draftText}
+            onChange={(event) => {
+              setDraftText(event.target.value);
+            }}
+            onBlur={() => {
+              finishTextEditing(shape.id);
+            }}
+            onKeyDown={handleTextKeyDown}
+            onMouseDown={(event) => {
+              // textarea操作で図形のドラッグを開始しない
+              event.stopPropagation();
+            }}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+            }}
+          />
+        ) : null}
+
+        {isText && !isEditing ? (
+          <span className="text-value">
+            {shape.text || "テキスト"}
+          </span>
+        ) : null}
       </div>
 
-      <div
-        className="resize-handle"
-        onMouseDown={(event) => startResize(event, shape)}
-      />
+      {!isEditing ? (
+        <div
+          className="resize-handle"
+          onMouseDown={(event) => {
+            startResize(event, shape);
+          }}
+        />
+      ) : null}
     </div>
   );
 })}
