@@ -5,6 +5,9 @@ import "./App.css";
 //履歴表示用
 const TYPE_LABELS = {
   rect: "四角形",
+  circle: "円",
+  triangle: "三角形",
+  text: "テキスト",
   // circle: "円", text: "テキスト" など今後増えたらここに追加
 };
 
@@ -14,7 +17,7 @@ const App = () => {
     history,
     userName,
     setUserName,
-    addRect,
+    addShape,
     updateRect,
     deleteRect,
     clearCanvas,
@@ -120,8 +123,8 @@ const App = () => {
     }
   }, []);
 
-  const handleAddRect = useCallback(() => { //useCallbackでメモ化
-    addRect();
+  const handleAddRect = useCallback((type) => { //useCallbackでメモ化
+    addRect(type);
   }, [addRect]);
 
   const handleClearCanvas = useCallback(() => { //useCallbackでメモ化
@@ -379,10 +382,46 @@ const App = () => {
             ↷
           </button>
         </div>
+<div className="shape-buttons">
+  <button
+    type="button"
+    onClick={() =>
+      handleAddShape("rect")
+    }
+  >
+    四角形を追加
+  </button>
 
-        <button type="button" onClick={handleAddRect}>
-          四角形を追加
-        </button>
+  <button
+    type="button"
+    onClick={() =>
+      handleAddShape("circle")
+    }
+  >
+    円を追加
+  </button>
+
+  <button
+    type="button"
+    onClick={() =>
+      handleAddShape("triangle")
+    }
+  >
+    三角形を追加
+  </button>
+
+  <button
+    type="button"
+    onClick={() =>
+      handleAddShape("text")
+    }
+  >
+    テキストを追加
+  </button>
+</div>
+
+
+        
 
         <label className="color-tool">
           色

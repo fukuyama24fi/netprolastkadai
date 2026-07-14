@@ -1,10 +1,32 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import socketService from "./socketService";
 
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
-  const [userName, setUserNameState] = useState(socketService.getUserName());
+  const [userName, setUserNameState] = useState(
+    socketService.getUserName()
+  );
+
+  // 履歴を重複させずに追加する
+  const addHistoryIfNeeded = useCallback((newHistory) => {
+    if (!newHistory) {
+      return;
+    }
+
+    setHistory((prev) => {
+      const exists =
+        newHistory.id &&
+        prev.some((item) => item.id === newHistory.id);
+
+      if (exists) {
+        console.log("重複履歴を無視:", newHistory.id);
+        return prev;
+      }
+
+      return [...prev, newHistory];
+    });
+  }, []);
 
   useEffect(() => {
     socketService.connect();
@@ -14,12 +36,12 @@ export function useCanvasSocket() {
 
       switch (data.action) {
         case "INIT": {
-          //INIT時は一度だけ状態を更新（バッチ処理）
-          setShapes(data.objects || []); 
-          // 履歴がついてきたら更新
+          setShapes(data.objects || []);
+
           if (data.history) {
             setHistory(data.history || []);
           }
+
           break;
         }
 
@@ -34,12 +56,16 @@ export function useCanvasSocket() {
           }
 
           setShapes((prev) => {
-            const exists = prev.some((shape) => {
-              return shape.id === data.object.id;
-            });
+            const exists = prev.some(
+              (shape) => shape.id === data.object.id
+            );
 
             if (exists) {
-              console.log("重複ADDを無視:", data.object.id);
+              console.log(
+                "重複ADDを無視:",
+                data.object.id
+              );
+
               return prev;
             }
 
@@ -47,16 +73,22 @@ export function useCanvasSocket() {
           });
 
           addHistoryIfNeeded(data.history);
-
           break;
         }
 
         case "UPDATE": {
-          const targetId = data.id || data.object?.id;
-          const changes = data.changes || data.object || {};
+          const targetId =
+            data.id || data.object?.id;
+
+          const changes =
+            data.changes || data.object || {};
 
           if (!targetId) {
-            console.warn("UPDATEにidがありません:", data);
+            console.warn(
+              "UPDATEにidがありません:",
+              data
+            );
+
             return;
           }
 
@@ -72,30 +104,31 @@ export function useCanvasSocket() {
           );
 
           addHistoryIfNeeded(data.history);
-
           break;
         }
 
         case "DELETE": {
-          setShapes((prev) => {
-            return prev.filter((shape) => shape.id !== data.id);
-          });
+          setShapes((prev) =>
+            prev.filter(
+              (shape) => shape.id !== data.id
+            )
+          );
 
           addHistoryIfNeeded(data.history);
-
           break;
         }
 
         case "CLEAR": {
           setShapes([]);
-
           addHistoryIfNeeded(data.history);
-
           break;
         }
 
         default:
-          console.log("不明なアクション:", data.action);
+          console.log(
+            "不明なアクション:",
+            data.action
+          );
       }
     };
 
@@ -104,103 +137,164 @@ export function useCanvasSocket() {
     return () => {
       socketService.offMessage(handleMessage);
     };
-  }, []);
+  }, [addHistoryIfNeeded]);
 
-  //履歴追加の重複チェック
-  const addHistoryIfNeeded = useCallback((newHistory) => {
-    if (!newHistory) {
-      return;
-    }
-
-    setHistory((prev) => {
-      // 同じIDの履歴がすでに存在しているかチェック
-      if (newHistory.id && prev.some(item => item.id === newHistory.id)) {
-        console.log("重複履歴を無視:", newHistory.id);
-        return prev;
-      }
-
-      return [...prev, newHistory];
-    });
-  }, []);
-
-  const setUserName = (name) => {
-    const nextName = name.trim() || "名無し";
+  const setUserName = useCallback((name) => {
+    const nextName =
+      name.trim() || "名無し";
 
     setUserNameState(nextName);
     socketService.setUserName(nextName);
-  };
+  }, []);
 
-  const addRect = () => {
-    const newRect = {
-      id: crypto.randomUUID(),
-      type: "rect",
-      x: 300,
-      y: 300,
-      width: 100,
-      height: 100,
-      fill: "#4f8cff",
-    };
+  // 四角・円・三角・テキスト共通の追加処理
+  const addShape = useCallback(
+    (type) => {
+      const commonShape = {
+        id: crypto.randomUUID(),
+        type,
+        x: 300,
+        y: 300,
+      };
 
-    socketService.sendMessage("ADD", {
-      object: newRect,
-      userName,
-    });
-  };
+      let newShape;
 
-  const updateRect = (id, changes) => {
-    setShapes((prev) =>
-      prev.map((shape) =>
-        shape.id === id
-          ? {
-              ...shape,
-              ...changes,
-            }
-          : shape
-      )
-    );
+      switch (type) {
+        case "circle": {
+          newShape = {
+            ...commonShape,
+            width: 100,
+            height: 100,
+            fill: "#ff6b6b",
+          };
 
-    socketService.sendMessage("UPDATE", {
-      id,
-      changes,
-      userName,
-    });
-  };
+          break;
+        }
 
-  const deleteRect = (id) => {
-    socketService.sendMessage("DELETE", {
-      id,
-      userName,
-    });
-  };
+        case "triangle": {
+          newShape = {
+            ...commonShape,
+            width: 120,
+            height: 100,
+            fill: "#f5b942",
+          };
 
-  const clearCanvas = () => {
+          break;
+        }
+
+        case "text": {
+          newShape = {
+            ...commonShape,
+            width: 180,
+            height: 50,
+            fill: "#222222",
+            text: "テキスト",
+            fontSize: 24,
+          };
+
+          break;
+        }
+
+        case "rect":
+        default: {
+          newShape = {
+            ...commonShape,
+            type: "rect",
+            width: 100,
+            height: 100,
+            fill: "#4f8cff",
+          };
+
+          break;
+        }
+      }
+
+      socketService.sendMessage("ADD", {
+        object: newShape,
+        userName,
+      });
+    },
+    [userName]
+  );
+
+  // 既存のApp.jsxを壊さないために残す
+  const addRect = useCallback(() => {
+    addShape("rect");
+  }, [addShape]);
+
+  const updateRect = useCallback(
+    (id, changes) => {
+      // サーバー応答を待たずに画面へ反映
+      setShapes((prev) =>
+        prev.map((shape) =>
+          shape.id === id
+            ? {
+                ...shape,
+                ...changes,
+              }
+            : shape
+        )
+      );
+
+      socketService.sendMessage("UPDATE", {
+        id,
+        changes,
+        userName,
+      });
+    },
+    [userName]
+  );
+
+  const deleteRect = useCallback(
+    (id) => {
+      socketService.sendMessage("DELETE", {
+        id,
+        userName,
+      });
+    },
+    [userName]
+  );
+
+  const clearCanvas = useCallback(() => {
     socketService.sendMessage("CLEAR", {
       userName,
     });
-  };
+  }, [userName]);
 
-  //Undo（矢印ボタン用・1回1件）
-  const undo = () => {
+  const undo = useCallback(() => {
     socketService.undo();
-  };
-
-  //Redo（矢印ボタン用・1回1件）
-  const redo = () => {
-    socketService.redo();
-  };
-
-  // 非同期待機なし（サーバーが INIT で応答）
-  const jumpToHistory = useCallback((historyId) => {
-    console.log("履歴ジャンプ開始:", historyId);
-    socketService.jumpToHistory(historyId);
   }, []);
+
+  const redo = useCallback(() => {
+    socketService.redo();
+  }, []);
+
+  const jumpToHistory = useCallback(
+    (historyId) => {
+      console.log(
+        "履歴ジャンプ開始:",
+        historyId
+      );
+
+      socketService.jumpToHistory(
+        historyId
+      );
+    },
+    []
+  );
 
   return {
     shapes,
     history,
     userName,
     setUserName,
+
+    // 新しい共通追加関数
+    addShape,
+
+    // 既存コードとの互換用
     addRect,
+
     updateRect,
     deleteRect,
     clearCanvas,
