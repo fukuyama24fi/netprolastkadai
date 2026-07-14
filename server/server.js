@@ -126,7 +126,7 @@ async function reloadHistoryListFromDB() {
             createdAt: row.created_at
         }));
         historyPointer = Math.min(historyPointer, historyList.length - 1);
-         console.log(`historyListを再読み込み: ${historyList.length}件, pointer: ${historyPointer}`);
+        console.log(`historyListを再読み込み: ${historyList.length}件, pointer: ${historyPointer}`);
     } catch (err) {
         console.error("historyListの再読み込み失敗:", err);
     }
@@ -730,6 +730,23 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     await pool.query('COMMIT');
 
                     console.log(`JUMP_TO_HISTORY実行完了: targetIndex ${targetIndex}, DB同期完了`);
+
+                    //最新の履歴一覧（ポインター以降を削除した状態）をクライアントに送信
+                    //これにより、クライアント側のhistorystateが最新に同期される
+                    //だからきっと邪魔な履歴も消えてくれるはず
+                    io.emit("message", {
+                        action: "HISTORY_RESPONSE",
+                        history: historyList.slice(0, historyPointer + 1).map(h => ({
+                            id: h.id,
+                            action: h.action,
+                            objectId: h.objectId,
+                            userId: h.userId,
+                            userName: h.userName,
+                            before: h.before,
+                            after: h.after,
+                            createdAt: h.createdAt
+                        }))
+                    });
 
                     // ループが全部終わったら、最終状態をINIT形式で1回だけ送信
                     io.emit("message", {
