@@ -141,10 +141,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
         action: "INIT",
         objects: canvasState
     });
-    socket.emit("message", {
-        action: "INIT",
-        objects: canvasState
-    });
 
     sendHistory(socket);
 
@@ -230,6 +226,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         [data.id, ...values]
                     );
 
+                    //上書き前の状態をコピー
+                    const beforeState = { ...obj };
                     Object.assign(obj, updateData);
                     //履歴を保存
                     const historyEntry = await saveEditHistory({
@@ -251,6 +249,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "DELETE": {
                 try {
+                    const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
                     await pool.query('DELETE FROM canvas_objects WHERE id = $1', [data.id]);
                     //.filter():条件に一致するものだけを残してそれ以外を削除するメソッド
                     canvasState = canvasState.filter(obj => obj.id !== data.id);
@@ -272,6 +271,8 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
             case "CLEAR": {
                 try {
+                    //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
+                    const beforeObjects = [...canvasState];
                     await pool.query('DELETE FROM canvas_objects');
                     canvasState = [];
                     const historyEntry = await saveEditHistory({
@@ -279,7 +280,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         objectId: null,
                         userId,
                         userName,
-                        before: [...canvasState],  //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
+                        before: beforeObjects, 
                         after: null
                     });
                     io.emit("message", { ...data, history: historyEntry });
