@@ -33,6 +33,7 @@ const [interaction, setInteraction] = useState(null);
 const [editingId, setEditingId] = useState(null);
 const [draftText, setDraftText] = useState("");
 
+const [fileName, setFileName] = useState("pikva-canvas");
 const canvasRef = useRef(null);
 const viewShapesRef = useRef([]);
 const didMoveRef = useRef(false);
@@ -376,6 +377,37 @@ const handleTextKeyDown = useCallback((event) => {
       }
     };
 
+
+    const handleSaveFile = useCallback(() => {
+  const saveData = {
+    version: 1,
+    fileName: fileName.trim() || "pikva-canvas",
+    savedAt: new Date().toISOString(),
+    objects: viewShapes,
+  };
+
+  const json = JSON.stringify(saveData, null, 2);
+
+  const blob = new Blob([json], {
+    type: "application/json",
+  });
+
+  const downloadUrl = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = `${
+    fileName.trim() || "pikva-canvas"
+  }.json`;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(downloadUrl);
+}, [fileName, viewShapes]);
+
     const handleMouseUp = () => {
 
       if (!didMoveRef.current) {
@@ -423,6 +455,38 @@ const handleTextKeyDown = useCallback((event) => {
 
   return (
     <div className="app">
+      <header className="app-header">
+  <strong className="app-header-title">
+    Pikva
+  </strong>
+
+  <input
+    type="text"
+    className="file-name-input"
+    value={fileName}
+    onChange={(event) => {
+      setFileName(event.target.value);
+    }}
+    placeholder="ファイル名"
+  />
+
+  <button type="button">
+    新規
+  </button>
+
+  <button type="button" onClick={handleSaveFile}>
+    保存
+  </button>
+
+  <button type="button">
+    開く
+  </button>
+
+  <button type="button">
+    PNG出力
+  </button>
+</header>
+    <div>
       <aside className="tool">
         <h1>Pikva</h1>
 
@@ -629,6 +693,7 @@ const handleTextKeyDown = useCallback((event) => {
           <li ref={historyEndRef} className="history-end" />
         </ul>
       </section>
+      </div>
     </div >
   );
 };
