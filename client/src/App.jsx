@@ -15,6 +15,8 @@ const TYPE_LABELS = {
   text: "テキスト",
 };
 
+const ANAO_THRESHOLD = 6;
+
 const App = () => {
   const {
     shapes,
@@ -35,6 +37,11 @@ const App = () => {
   const [viewShapes, setViewShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [interaction, setInteraction] = useState(null);
+
+  const [smartGuides,setSmartGuides] = useState({
+    vertical: [],
+    horizontal: [],
+  });
 
   // テキスト編集用
   const [editingId, setEditingId] = useState(null);
@@ -225,6 +232,154 @@ const App = () => {
       updateRect,
     ]
   );
+const calculateSmartGuides = useCallback(
+  (movingShape, allShapes) => {
+    const otherShapes = allShapes.filter((shape) => {
+      return shape.id !== movingShape.id;
+    });
+
+    let snappedX = movingShape.x;
+    let snappedY = movingShape.y;
+
+    let nearestXDistance = SNAP_THRESHOLD + 1;
+    let nearestYDistance = SNAP_THRESHOLD + 1;
+
+    let verticalGuide = null;
+    let horizontalGuide = null;
+
+    /*
+     * 移動中図形の
+     * 左端・中央・右端
+     */
+    const movingXPoints = [
+      {
+        value: movingShape.x,
+        offset: 0,
+      },
+      {
+        value:
+          movingShape.x +
+          movingShape.width / 2,
+        offset: movingShape.width / 2,
+      },
+      {
+        value:
+          movingShape.x +
+          movingShape.width,
+        offset: movingShape.width,
+      },
+    ];
+
+    /*
+     * 移動中図形の
+     * 上端・中央・下端
+     */
+    const movingYPoints = [
+      {
+        value: movingShape.y,
+        offset: 0,
+      },
+      {
+        value:
+          movingShape.y +
+          movingShape.height / 2,
+        offset: movingShape.height / 2,
+      },
+      {
+        value:
+          movingShape.y +
+          movingShape.height,
+        offset: movingShape.height,
+      },
+    ];
+
+    otherShapes.forEach((otherShape) => {
+      const targetXPoints = [
+        otherShape.x,
+        otherShape.x +
+          otherShape.width / 2,
+        otherShape.x +
+          otherShape.width,
+      ];
+
+      const targetYPoints = [
+        otherShape.y,
+        otherShape.y +
+          otherShape.height / 2,
+        otherShape.y +
+          otherShape.height,
+      ];
+
+      /*
+       * 縦方向の整列を確認
+       */
+      movingXPoints.forEach((movingPoint) => {
+        targetXPoints.forEach((targetX) => {
+          const difference =
+            targetX - movingPoint.value;
+
+          const distance =
+            Math.abs(difference);
+
+          if (
+            distance <= SNAP_THRESHOLD &&
+            distance < nearestXDistance
+          ) {
+            nearestXDistance = distance;
+
+            snappedX =
+              targetX - movingPoint.offset;
+
+            verticalGuide = targetX;
+          }
+        });
+      });
+
+      /*
+       * 横方向の整列を確認
+       */
+      movingYPoints.forEach((movingPoint) => {
+        targetYPoints.forEach((targetY) => {
+          const difference =
+            targetY - movingPoint.value;
+
+          const distance =
+            Math.abs(difference);
+
+          if (
+            distance <= SNAP_THRESHOLD &&
+            distance < nearestYDistance
+          ) {
+            nearestYDistance = distance;
+
+            snappedY =
+              targetY - movingPoint.offset;
+
+            horizontalGuide = targetY;
+          }
+        });
+      });
+    });
+
+    return {
+      x: snappedX,
+      y: snappedY,
+
+      guides: {
+        vertical:
+          verticalGuide === null
+            ? []
+            : [verticalGuide],
+
+        horizontal:
+          horizontalGuide === null
+            ? []
+            : [horizontalGuide],
+      },
+    };
+  },
+  []
+);
 
   
   //図形の優先
@@ -656,6 +811,11 @@ const sendBackward = useCallback(() => {
         return;
       }
 
+      setSmartGuides({
+        vertical: [],
+        horizontal: [],
+      });
+
       setSelectedId(shape.id);
       setEditingId(null);
 
@@ -924,27 +1084,61 @@ const sendBackward = useCallback(() => {
       /*
        * 移動
        */
-      if (
-        interaction.mode === "drag"
-      ) {
-        const newX =
-          event.clientX -
-          canvasRect.left -
-          interaction.offsetX;
+     if (interaction.mode === "drag") {
+  const newX =
+    event.clientX -
+    canvasRect.left -
+    interaction.offsetX;
 
-        const newY =
-          event.clientY -
-          canvasRect.top -
-          interaction.offsetY;
+  const newY =
+    event.clientY -
+    canvasRect.top -
+    interaction.offsetY;
 
-        updateShapeLocal(
-          interaction.id,
-          {
-            x: newX,
-            y: newY,
-          }
-        );
-      }
+  const movingShape =
+    viewShapesRef.current.find((shape) => {
+      return shape.id === interaction.id;
+    });
+
+  if (!movingShape) {
+    return;
+  }
+
+  /*
+   * Shiftキーを押している間は
+   * オートガイドを無効化する
+   */
+  if (event.shiftKey) {
+    setSmartGuides({
+      vertical: [],
+      horizontal: [],
+    });
+
+    updateShapeLocal(interaction.id, {
+      x: newX,
+      y: newY,
+    });
+
+    return;
+  }
+
+  const snapResult =
+    calculateSmartGuides(
+      {
+        ...movingShape,
+        x: newX,
+        y: newY,
+      },
+      viewShapesRef.current
+    );
+
+  setSmartGuides(snapResult.guides);
+
+  updateShapeLocal(interaction.id, {
+    x: snapResult.x,
+    y: snapResult.y,
+  });
+}
 
       /*
        * リサイズ
@@ -952,6 +1146,10 @@ const sendBackward = useCallback(() => {
       if (
         interaction.mode === "resize"
       ) {
+        setSmartGuides({
+          vertical: [],
+          horizontal: [],
+        });
         const diffX =
           event.clientX -
           interaction.startX;
@@ -987,6 +1185,10 @@ const sendBackward = useCallback(() => {
       if (
         interaction.mode === "rotate"
       ) {
+        setSmartGuides({
+          vertical: [],
+          horizontal: [],
+        });
         const currentPointerAngle =
           Math.atan2(
             event.clientY -
@@ -1037,6 +1239,10 @@ const sendBackward = useCallback(() => {
     };
 
     const handleMouseUp = () => {
+      setSmartGuides({
+        vertical: [],
+        horizontal: [],
+      });
       if (!didMoveRef.current) {
         setInteraction(null);
         return;
@@ -1114,6 +1320,7 @@ const sendBackward = useCallback(() => {
     updateShapeLocal,
     updateRect,
     autoScrollMain,
+    calculateSmartGuides,
   ]);
 
   /*
@@ -1447,6 +1654,8 @@ const sendBackward = useCallback(() => {
               width: `${canvasWidth}px`,
               height: `${canvasHeight}px`,
             }}
+
+            
             onMouseDown={(event) => {
               /*
                * 図形以外のキャンバスを押したら
@@ -1461,6 +1670,26 @@ const sendBackward = useCallback(() => {
               }
             }}
           >
+            {smartGuides.vertical.map((guideX) => (
+  <div
+    key={`vertical-${guideX}`}
+    className="smart-guide smart-guide-vertical"
+    style={{
+      left: `${guideX}px`,
+    }}
+  />
+))}
+
+{smartGuides.horizontal.map((guideY) => (
+  <div
+    key={`horizontal-${guideY}`}
+    className="smart-guide smart-guide-horizontal"
+    style={{
+      top: `${guideY}px`,
+    }}
+  />
+))}
+
             {viewShapes.map((shape,shapeIndex) => {
               const isSelected =
                 shape.id === selectedId;
@@ -1633,6 +1862,35 @@ const sendBackward = useCallback(() => {
                           }}
                         />
                       ) : null}
+                      {isSelected && !isEditing ? (
+  <div
+    className="shape-measurement"
+    style={{
+      transform: `
+        translateX(-50%)
+        rotate(${-(shape.rotation || 0)}deg)
+      `,
+    }}
+  >
+    <span>
+      X {Math.round(shape.x)}
+    </span>
+
+    <span>
+      Y {Math.round(shape.y)}
+    </span>
+
+    <span>
+      W {Math.round(shape.width)}
+    </span>
+
+    <span>
+      H {Math.round(shape.height)}
+    </span>
+
+    <strong>px</strong>
+  </div>
+) : null}
                     </>
                   ) : null}
                 </div>
