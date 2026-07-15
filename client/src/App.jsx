@@ -97,10 +97,19 @@ const {
    * サーバーからHTMLが返ってきたらダウンロードする。
    */
 useEffect(() => {
+  if (!exportedFile) {
+    return;
+  }
+
   if (
-    !exportedFile?.content ||
-    !exportedFile?.fileName
+    !exportedFile.content ||
+    !exportedFile.fileName
   ) {
+    console.warn(
+      "出力ファイルの内容が不足しています",
+      exportedFile
+    );
+
     return;
   }
 

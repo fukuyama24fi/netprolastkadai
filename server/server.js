@@ -54,7 +54,8 @@ const UPDATE_COLUMN_MAP = {
     fontSize: "font_size",
     fontWeight: "font_weight",
     fontStyle: "font_style",
-    textTransform: "text_transform"
+    textTransform: "text_transform",
+    zIndex: "z_index"
 };
 //許可する更新対象の列リスト
 const ALLOWED_UPDATE_FIELDS = Object.keys(UPDATE_COLUMN_MAP);
@@ -64,13 +65,20 @@ const ALLOWED_UPDATE_FIELDS = Object.keys(UPDATE_COLUMN_MAP);
 async function saveEditHistory({ action, objectId, userId, userName, before, after }) {
     try {
         const result = await pool.query(
-            `INSERT INTO edit_history (action, object_id, user_id, user_name, before, after)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", 
-              before, after, created_at AS "createdAt"`,
-            [action, objectId, userId, userName,
-                before ? JSON.stringify(before) : null,
-                after ? JSON.stringify(after) : null]
+    `
+    SELECT
+        h.id,
+        h.action,
+        h.object_id AS "objectId",
+        h.user_id AS "userId",
+        h.user_name AS "userName",
+        h.before,
+        h.after,
+        h.created_at AS "createdAt"
+    FROM edit_history AS h
+    ORDER BY h.created_at DESC
+    LIMIT 100
+    `
         );
         return result.rows[0];
     } catch (err) {
@@ -165,19 +173,67 @@ async function truncateHistoryAfterPointer() {
 
 // canvasStateの内容でcanvas_objectsテーブルを丸ごと書き換える
 async function syncCanvasObjectsToDB() {
-    await pool.query('BEGIN');
-    await pool.query('DELETE FROM canvas_objects');
-    for (const obj of canvasState) {
-        await pool.query(
-            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-            [
-                obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text,
-                obj.rotation ?? 0, obj.fontSize ?? null, obj.fontWeight ?? null, obj.fontStyle ?? null, obj.textTransform ?? null
-            ]
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        await client.query(
+            "DELETE FROM canvas_objects"
         );
+
+        for (const obj of canvasState) {
+            await client.query(
+                `
+                INSERT INTO canvas_objects (
+                    id,
+                    type,
+                    x,
+                    y,
+                    width,
+                    height,
+                    fill,
+                    text,
+                    rotation,
+                    font_size,
+                    font_weight,
+                    font_style,
+                    text_transform,
+                    z_index
+                )
+                VALUES (
+                    $1, $2, $3, $4,
+                    $5, $6, $7, $8,
+                    $9, $10, $11, $12,
+                    $13, $14
+                )
+                `,
+                [
+                    obj.id,
+                    obj.type,
+                    obj.x,
+                    obj.y,
+                    obj.width,
+                    obj.height,
+                    obj.fill,
+                    obj.text ?? null,
+                    obj.rotation ?? 0,
+                    obj.fontSize ?? 24,
+                    obj.fontWeight ?? "normal",
+                    obj.fontStyle ?? "normal",
+                    obj.textTransform ?? "none",
+                    obj.zIndex ?? 0
+                ]
+            );
+        }
+
+        await client.query("COMMIT");
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
     }
-    await pool.query('COMMIT');
 }
 
 
@@ -192,8 +248,29 @@ async function startServer() {
 
         //初期化完了を待ってからサーバー起動
         //canvas_objects を読み込む
-        const res = await pool.query('SELECT * FROM canvas_objects');
-        canvasState = res.rows;
+      const res = await pool.query(
+    `
+    SELECT
+        id,
+        type,
+        x,
+        y,
+        width,
+        height,
+        fill,
+        text,
+        rotation,
+        font_size AS "fontSize",
+        font_weight AS "fontWeight",
+        font_style AS "fontStyle",
+        text_transform AS "textTransform",
+        z_index AS "zIndex"
+    FROM canvas_objects
+    ORDER BY z_index ASC, id ASC
+    `
+);
+
+canvasState = res.rows;
         console.log(`初期データ読み込み完了 (${canvasState.length}件)`);
 
         //NEW: edit_history をメモリに読み込む
@@ -214,33 +291,257 @@ async function startServer() {
         historyPointer = historyList.length - 1;
 
         //履歴を最初から最後まで順に適用し、再起動時の「本当の最新状態」をシミュレートする
-        let reconstructedState = [];
-        for (const history of historyList) {
-            switch (history.action) {
-                case "ADD":
-                    // 重複回避しつつ追加
-                    if (!reconstructedState.find(obj => obj.id === history.objectId)) {
-                        reconstructedState.push(history.after);
-                    }
-                    break;
-                case "UPDATE":
-                    const uObj = reconstructedState.find(obj => obj.id === history.objectId);
-                    if (uObj) Object.assign(uObj, history.after);
-                    break;
-                case "DELETE":
-                    reconstructedState = reconstructedState.filter(obj => obj.id !== history.objectId);
-                    break;
-                case "CLEAR":
-                    reconstructedState = [];
-                    break;
-            }
+       /*
+ * 履歴がある場合だけ、履歴から最新状態を再構築する。
+ * 履歴が空の場合はcanvas_objectsから読み込んだ状態を残す。
+ */
+if (historyList.length > 0) {
+    let reconstructedState = [];
+
+    for (const history of historyList) {
+        switch (history.action) {
+           case "ADD": {
+    if (!data.object?.id) {
+        console.warn(
+            "ADDデータが不正です:",
+            data
+        );
+
+        break;
+    }
+
+    const idAlreadyExists =
+        canvasState.some(
+            (obj) =>
+                obj.id === data.object.id
+        );
+
+    if (idAlreadyExists) {
+        console.log(
+            "ID重複:",
+            data.object.id
+        );
+
+        break;
+    }
+
+    const newObject = {
+        id: String(data.object.id),
+
+        type: [
+            "rect",
+            "circle",
+            "triangle",
+            "text"
+        ].includes(data.object.type)
+            ? data.object.type
+            : "rect",
+
+        x:
+            Number(data.object.x) || 0,
+
+        y:
+            Number(data.object.y) || 0,
+
+        width:
+            Number(data.object.width) ||
+            100,
+
+        height:
+            Number(data.object.height) ||
+            100,
+
+        fill:
+            data.object.fill ||
+            "#4f8cff",
+
+        text:
+            data.object.text ?? null,
+
+        rotation:
+            Number(data.object.rotation) ||
+            0,
+
+        fontSize:
+            Number(data.object.fontSize) ||
+            24,
+
+        fontWeight:
+            data.object.fontWeight ===
+            "bold"
+                ? "bold"
+                : "normal",
+
+        fontStyle:
+            data.object.fontStyle ===
+            "italic"
+                ? "italic"
+                : "normal",
+
+        textTransform:
+            data.object.textTransform ===
+            "uppercase"
+                ? "uppercase"
+                : "none",
+
+        zIndex:
+            Number.isFinite(
+                Number(
+                    data.object.zIndex
+                )
+            )
+                ? Number(
+                    data.object.zIndex
+                )
+                : canvasState.length
+    };
+
+    try {
+        /*
+         * Undo後に新規編集した場合は、
+         * 現在位置より後ろの履歴を削除する。
+         */
+        const wasTruncated =
+            await truncateHistoryAfterPointer();
+
+        if (wasTruncated) {
+            await reloadHistoryListFromDB();
         }
 
-        // 再構築した状態を正規の canvasState に代入
-        canvasState = reconstructedState;
+        await pool.query(
+            `
+            INSERT INTO canvas_objects (
+                id,
+                type,
+                x,
+                y,
+                width,
+                height,
+                fill,
+                text,
+                rotation,
+                font_size,
+                font_weight,
+                font_style,
+                text_transform,
+                z_index
+            )
+            VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7, $8,
+                $9, $10, $11, $12,
+                $13, $14
+            )
+            `,
+            [
+                newObject.id,
+                newObject.type,
+                newObject.x,
+                newObject.y,
+                newObject.width,
+                newObject.height,
+                newObject.fill,
+                newObject.text,
+                newObject.rotation,
+                newObject.fontSize,
+                newObject.fontWeight,
+                newObject.fontStyle,
+                newObject.textTransform,
+                newObject.zIndex
+            ]
+        );
 
-        //再起動でポインターが末尾に戻るため、DB(canvas_objects)側もこの最新状態で強制上書き同期する
-        await syncCanvasObjectsToDB();
+        canvasState.push(newObject);
+
+        const historyEntry =
+            await saveEditHistory({
+                action: "ADD",
+                objectId:
+                    newObject.id,
+                userId,
+                userName,
+                before: null,
+                after: newObject
+            });
+
+        if (historyEntry) {
+            historyList.push(
+                historyEntry
+            );
+
+            historyPointer =
+                historyList.length - 1;
+        }
+
+        io.emit("message", {
+            action: "ADD",
+            object: newObject,
+            history:
+                historyEntry || null
+        });
+
+        broadcastHistory();
+
+        console.log(
+            "ADD完了:",
+            newObject
+        );
+    } catch (err) {
+        console.error(
+            "ADD処理のDB保存エラー:",
+            err
+        );
+    }
+
+    break;
+}
+
+            case "UPDATE": {
+                const targetObject =
+                    reconstructedState.find(
+                        (obj) =>
+                            obj.id ===
+                            history.objectId
+                    );
+
+                if (
+                    targetObject &&
+                    history.after
+                ) {
+                    Object.assign(
+                        targetObject,
+                        history.after
+                    );
+                }
+
+                break;
+            }
+
+            case "DELETE": {
+                reconstructedState =
+                    reconstructedState.filter(
+                        (obj) =>
+                            obj.id !==
+                            history.objectId
+                    );
+
+                break;
+            }
+
+            case "CLEAR": {
+                reconstructedState = [];
+                break;
+            }
+
+            default:
+                break;
+        }
+    }
+
+    canvasState = reconstructedState;
+
+    await syncCanvasObjectsToDB();
+}
 
         console.log(`初期データ再構築＆同期完了 (${canvasState.length}件), pointer: ${historyPointer}`);
 
@@ -249,11 +550,13 @@ async function startServer() {
             console.log(`サーバーがポート ${process.env.PORT || 3000} で起動しました`);
         });
     } catch (err) {
-        await pool.query('ROLLBACK').catch(() => { });
-        console.error("サーバー起動失敗:", err);
-        process.exit(1);
-    }
+    console.error(
+        "サーバー起動失敗:",
+        err
+    );
 
+    process.exit(1);
+}
 
 }
 startServer(); //関数を実行
@@ -312,7 +615,17 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null, data.object.textTransform ?? null
                         ]
                     );
-                    canvasState.push(data.object);
+
+                    const newObject = {
+    ...data.object,
+    rotation: data.object.rotation ?? 0,
+    fontSize: data.object.fontSize ?? 24,
+    fontWeight: data.object.fontWeight ?? "normal",
+    fontStyle: data.object.fontStyle ?? "normal",
+    textTransform: data.object.textTransform ?? "none",
+    zIndex: data.object.zIndex ?? canvasState.length
+};
+                    canvasState.push(newObject);
 
                     //新しい編集が来たら、ポインター後ろを削除
                     if (await truncateHistoryAfterPointer()) {
@@ -331,11 +644,22 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: data.object
                     });
 
-                    //履歴に記録
-                    historyList.push(historyEntry);
-                    historyPointer = historyList.length - 1;
+                  
+                    if (historyEntry) {
+                         historyList.push(historyEntry);
+                         historyPointer = historyList.length - 1;
+                        }
 
-                    io.emit("message", { ...data, history: historyEntry }); //全員に送信
+                        io.emit("message", {
+
+                            action: "ADD",
+
+                            object: newObject,
+
+                            history: historyEntry || null
+
+                        });
+ //全員に送信
                     broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("ADD処理のDB保存エラー:", err);
@@ -715,13 +1039,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "EXPORT": {
+            case "EXPORT_CODE": {
   const format = data.format;
 
   const baseName = toSafeFileName(
     data.fileName,
     "pikva-canvas"
   );
+
+  console.log("EXPORT_CODE受信:",{
+    format,
+    baseName,
+    objectCount: canvasState.length
+  });
 
   let content;
   let outputFileName;
@@ -771,6 +1101,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
     },
   });
 
+  console.log("EXPORT_RESULT送信:",outputFileName);
   break;
 }
 
