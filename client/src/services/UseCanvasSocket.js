@@ -163,13 +163,36 @@ export function useCanvasSocket() {
   // 四角・円・三角・テキスト共通の追加処理
   const addShape = useCallback(
   (type) => {
-    const commonShape = {
-      id: crypto.randomUUID(),
-      type,
-      x: 300,
-      y: 300,
-      rotation: 0,
-    };
+  
+    const maxZIndex = shapes.reduce(
+  (maxValue, shape, index) => {
+    const shapeZIndex = Number(
+      shape.zIndex
+    );
+
+    const currentZIndex =
+      Number.isFinite(shapeZIndex)
+        ? shapeZIndex
+        : index;
+
+    return Math.max(
+      maxValue,
+      currentZIndex
+    );
+  },
+  -1
+);
+
+const commonShape = {
+  id: crypto.randomUUID(),
+  type,
+  x: 300,
+  y: 300,
+  rotation: 0,
+
+  // 新しい図形は一番前
+  zIndex: maxZIndex + 1,
+};
 
     let newShape;
 
@@ -232,7 +255,7 @@ export function useCanvasSocket() {
       userName,
     });
   },
-  [userName]
+  [shapes,userName]
 );
 
   // 既存のApp.jsxを壊さないために残す

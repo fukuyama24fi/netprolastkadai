@@ -226,6 +226,147 @@ const App = () => {
     ]
   );
 
+  
+  //図形の優先
+ const moveSelectedLayer = useCallback(
+  (direction) => {
+    if (!selectedId) {
+      return;
+    }
+
+    const currentShapes =
+      viewShapesRef.current;
+
+    /*
+     * zIndexがまだない古い図形は、
+     * 現在の配列順を仮のzIndexとして使う
+     */
+    const orderedShapes = currentShapes
+      .map((shape, index) => {
+        const parsedZIndex =
+          Number(shape.zIndex);
+
+        return {
+          ...shape,
+
+          calculatedZIndex:
+            Number.isFinite(parsedZIndex)
+              ? parsedZIndex
+              : index,
+        };
+      })
+      .sort((shapeA, shapeB) => {
+        return (
+          shapeA.calculatedZIndex -
+          shapeB.calculatedZIndex
+        );
+      });
+
+    const currentIndex =
+      orderedShapes.findIndex(
+        (shape) =>
+          shape.id === selectedId
+      );
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    /*
+     * 前へ：配列の次
+     * 後ろへ：配列の前
+     */
+    const targetIndex =
+      direction === "forward"
+        ? currentIndex + 1
+        : currentIndex - 1;
+
+    /*
+     * すでに最前面・最背面なら何もしない
+     */
+    if (
+      targetIndex < 0 ||
+      targetIndex >=
+        orderedShapes.length
+    ) {
+      return;
+    }
+
+    const selectedShapeForLayer =
+      orderedShapes[currentIndex];
+
+    const targetShape =
+      orderedShapes[targetIndex];
+
+    /*
+     * 選択中図形と隣の図形の
+     * zIndexを交換する
+     */
+    const selectedNewZIndex =
+      targetShape.calculatedZIndex;
+
+    const targetNewZIndex =
+      selectedShapeForLayer
+        .calculatedZIndex;
+
+    const nextShapes =
+      currentShapes.map((shape) => {
+        if (
+          shape.id ===
+          selectedShapeForLayer.id
+        ) {
+          return {
+            ...shape,
+            zIndex:
+              selectedNewZIndex,
+          };
+        }
+
+        if (
+          shape.id === targetShape.id
+        ) {
+          return {
+            ...shape,
+            zIndex: targetNewZIndex,
+          };
+        }
+
+        return shape;
+      });
+
+    /*
+     * 画面側を先に更新
+     */
+    setViewShapes(nextShapes);
+    viewShapesRef.current =
+      nextShapes;
+
+    /*
+     * サーバー側も2つとも更新
+     */
+    updateRect(
+      selectedShapeForLayer.id,
+      {
+        zIndex:
+          selectedNewZIndex,
+      }
+    );
+
+    updateRect(targetShape.id, {
+      zIndex: targetNewZIndex,
+    });
+  },
+  [selectedId, updateRect]
+  );
+
+  const brengForward = useCallback(() => {
+    moveSelectedLayer("forward");
+  },[moveSelectedLayer]);
+
+  const sendBackward = useCallback(()=>{
+    moveSelectedLayer("backward");
+  },[moveSelectedLayer]);
+
   /*
    * ドラッグ・リサイズ時の画面端スクロール。
    */
@@ -1005,7 +1146,7 @@ const App = () => {
     <div className="app">
       <header className="app-header">
         <strong className="app-header-title" >
-          <img src= "./pictuer/2aikon.png"></img>
+          <img src= "../pictuer/2aikon.png"></img>
           Pikva
         </strong>
 
@@ -1167,6 +1308,30 @@ const App = () => {
               </span>
             </label>
           ) : null}
+
+         {selectedShape ? (
+  <div className="layer-tools">
+    <span>重なり順</span>
+
+    <div className="layer-buttons">
+      <button
+        type="button"
+        onClick={sendBackward}
+        title="選択中の図形を1つ後ろへ移動"
+      >
+        ↓ 後ろへ
+      </button>
+
+      <button
+        type="button"
+        onClick={bringForward}
+        title="選択中の図形を1つ前へ移動"
+      >
+        ↑ 前へ
+      </button>
+    </div>
+  </div>
+) : null}
 
           <label className="color-tool">
             色
@@ -1356,6 +1521,10 @@ const App = () => {
 
                     transformOrigin:
                       "center center",
+
+                      zIndex: Number.isFinite(Number(shape.zIndex))
+                      ? Number(shape.zIndex)
+                      : shapeIndex,
                   }}
                 >
                   <div
