@@ -4,15 +4,12 @@ import http from 'http'; //HTTPサーバー機能（Socket.ioで必要）
 import cors from 'cors'; //corsは別のドメインからの勝手なアクセスをブロックする
 import pkg from 'pg'; //Neon接続用
 import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライブラリ
+import { pool } from './config/db.js'; //データベース接続用
+import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
 
 
 dotenv.config(); //.envファイルを適用
-import { pool } from './config/db.js'; //データベース接続用
-import {
-  generateHTMLCode,
-  generateCSSCode,
-  toSafeFileName,
-} from "./utils/codeGenerator.js"; //コード抽出用
+
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -65,20 +62,13 @@ const ALLOWED_UPDATE_FIELDS = Object.keys(UPDATE_COLUMN_MAP);
 async function saveEditHistory({ action, objectId, userId, userName, before, after }) {
     try {
         const result = await pool.query(
-    `
-    SELECT
-        h.id,
-        h.action,
-        h.object_id AS "objectId",
-        h.user_id AS "userId",
-        h.user_name AS "userName",
-        h.before,
-        h.after,
-        h.created_at AS "createdAt"
-    FROM edit_history AS h
-    ORDER BY h.created_at DESC
-    LIMIT 100
-    `
+            `INSERT INTO edit_history (action, object_id, user_id, user_name, before, after)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, action, object_id AS "objectId", user_id AS "userId", user_name AS "userName", 
+              before, after, created_at AS "createdAt"`,
+            [action, objectId, userId, userName,
+                before ? JSON.stringify(before) : null,
+                after ? JSON.stringify(after) : null]
         );
         return result.rows[0];
     } catch (err) {
@@ -107,14 +97,14 @@ async function sendHistory(socket) {
 
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-             history: result.rows.reverse()
+            history: result.rows.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
     }
 }
 
-// 履歴一覧を「今の全件」の状態で全クライアントに同期するヘルパー
+// 履歴一覧を「今の全件」の状態で全クライアントに同期する
 // pointerがどこにあるかに関係なく、historyList自体が実際に短くなっていない限り全部送る
 function broadcastHistory() {
     io.emit("message", {
@@ -216,12 +206,12 @@ async function syncCanvasObjectsToDB() {
                     obj.width,
                     obj.height,
                     obj.fill,
-                    obj.text ?? null,
+                    obj.text,
                     obj.rotation ?? 0,
-                    obj.fontSize ?? 24,
-                    obj.fontWeight ?? "normal",
-                    obj.fontStyle ?? "normal",
-                    obj.textTransform ?? "none",
+                    obj.fontSize ?? null,
+                    obj.fontWeight ?? null,
+                    obj.fontStyle ?? null,
+                    obj.textTransform ?? null,
                     obj.zIndex ?? 0
                 ]
             );
@@ -248,29 +238,8 @@ async function startServer() {
 
         //初期化完了を待ってからサーバー起動
         //canvas_objects を読み込む
-      const res = await pool.query(
-    `
-    SELECT
-        id,
-        type,
-        x,
-        y,
-        width,
-        height,
-        fill,
-        text,
-        rotation,
-        font_size AS "fontSize",
-        font_weight AS "fontWeight",
-        font_style AS "fontStyle",
-        text_transform AS "textTransform",
-        z_index AS "zIndex"
-    FROM canvas_objects
-    ORDER BY z_index ASC, id ASC
-    `
-);
-
-canvasState = res.rows;
+        const res = await pool.query('SELECT * FROM canvas_objects');
+        canvasState = res.rows;
         console.log(`初期データ読み込み完了 (${canvasState.length}件)`);
 
         //NEW: edit_history をメモリに読み込む
@@ -290,290 +259,16 @@ canvasState = res.rows;
         //ポインターを最新の状態に設定（起動時は常に最新）
         historyPointer = historyList.length - 1;
 
-        //履歴を最初から最後まで順に適用し、再起動時の「本当の最新状態」をシミュレートする
-       /*
- * 履歴がある場合だけ、履歴から最新状態を再構築する。
- * 履歴が空の場合はcanvas_objectsから読み込んだ状態を残す。
- */
-if (historyList.length > 0) {
-    let reconstructedState = [];
-
-    for (const history of historyList) {
-        switch (history.action) {
-           case "ADD": {
-    if (!data.object?.id) {
-        console.warn(
-            "ADDデータが不正です:",
-            data
-        );
-
-        break;
-
-        
-    }
-    
-    const idAlreadyExists =
-        canvasState.some(
-            (obj) =>
-                obj.id === data.object.id
-        );
-
-    if (idAlreadyExists) {
-        console.log(
-            "ID重複:",
-            data.object.id
-        );
-
-        break;
-    }
-
-    const newObject = {
-        id: String(data.object.id),
-
-        type: [
-            "rect",
-            "circle",
-            "triangle",
-            "text"
-        ].includes(data.object.type)
-            ? data.object.type
-            : "rect",
-
-        x:
-            Number(data.object.x) || 0,
-
-        y:
-            Number(data.object.y) || 0,
-
-        width:
-            Number(data.object.width) ||
-            100,
-
-        height:
-            Number(data.object.height) ||
-            100,
-
-        fill:
-            data.object.fill ||
-            "#4f8cff",
-
-        text:
-            data.object.text ?? null,
-
-        rotation:
-            Number(data.object.rotation) ||
-            0,
-
-        fontSize:
-            Number(data.object.fontSize) ||
-            24,
-
-        fontWeight:
-            data.object.fontWeight ===
-            "bold"
-                ? "bold"
-                : "normal",
-
-        fontStyle:
-            data.object.fontStyle ===
-            "italic"
-                ? "italic"
-                : "normal",
-
-        textTransform:
-            data.object.textTransform ===
-            "uppercase"
-                ? "uppercase"
-                : "none",
-
-        zIndex:
-            Number.isFinite(
-                Number(
-                    data.object.zIndex
-                )
-            )
-                ? Number(
-                    data.object.zIndex
-                )
-                : canvasState.length
-    };
-
-    try {
-        /*
-         * Undo後に新規編集した場合は、
-         * 現在位置より後ろの履歴を削除する。
-         */
-        const wasTruncated =
-            await truncateHistoryAfterPointer();
-
-        if (wasTruncated) {
-            await reloadHistoryListFromDB();
-        }
-
-        await pool.query(
-            `
-            INSERT INTO canvas_objects (
-                id,
-                type,
-                x,
-                y,
-                width,
-                height,
-                fill,
-                text,
-                rotation,
-                font_size,
-                font_weight,
-                font_style,
-                text_transform,
-                z_index
-            )
-            VALUES (
-                $1, $2, $3, $4,
-                $5, $6, $7, $8,
-                $9, $10, $11, $12,
-                $13, $14
-            )
-            `,
-            [
-                newObject.id,
-                newObject.type,
-                newObject.x,
-                newObject.y,
-                newObject.width,
-                newObject.height,
-                newObject.fill,
-                newObject.text,
-                newObject.rotation,
-                newObject.fontSize,
-                newObject.fontWeight,
-                newObject.fontStyle,
-                newObject.textTransform,
-                newObject.zIndex
-            ]
-        );
-
-        canvasState.push(newObject);
-
-        const historyEntry =
-            await saveEditHistory({
-                action: "ADD",
-                objectId:
-                    newObject.id,
-                userId,
-                userName,
-                before: null,
-                after: newObject
-            });
-
-        if (historyEntry) {
-            historyList.push(
-                historyEntry
-            );
-
-            historyPointer =
-                historyList.length - 1;
-        }
-
-        io.emit("message", {
-            action: "ADD",
-            object: newObject,
-            history:
-                historyEntry || null
-        });
-
-        broadcastHistory();
-
-        console.log(
-            "ADD完了:",
-            newObject
-        );
-    } catch (err) {
-        console.error(
-            "ADD処理のDB保存エラー:",
-            err
-        );
-    }
-
-    break;
-}
-
-            case "UPDATE": {
-                const targetObject =
-                    reconstructedState.find(
-                        (obj) =>
-                            obj.id ===
-                            history.objectId
-                    );
-
-                if (
-                    targetObject &&
-                    history.after
-                ) {
-                    Object.assign(
-                        targetObject,
-                        history.after
-                    );
-                }
-
-                break;
-            }
-
-            case "DELETE": {
-                reconstructedState =
-                    reconstructedState.filter(
-                        (obj) =>
-                            obj.id !==
-                            history.objectId
-                    );
-
-                break;
-            }
-
-            case "CLEAR": {
-                reconstructedState = [];
-                break;
-            }
-
-            case "IMPORT": {
-    reconstructedState =
-        Array.isArray(
-            history.after
-        )
-            ? history.after.map(
-                (object) => ({
-                    ...object
-                })
-            )
-            : [];
-
-    break;
-}
-
-            default:
-                break;
-        }
-    }
-
-    canvasState = reconstructedState;
-
-    await syncCanvasObjectsToDB();
-}
-
-        console.log(`初期データ再構築＆同期完了 (${canvasState.length}件), pointer: ${historyPointer}`);
+        console.log(`historyList読み込み完了 (${historyList.length}件), pointer: ${historyPointer}`);
 
         const PORT = process.env.PORT || 3000;
         server.listen(PORT, () => {
             console.log(`サーバーがポート ${process.env.PORT || 3000} で起動しました`);
         });
     } catch (err) {
-    console.error(
-        "サーバー起動失敗:",
-        err
-    );
-
-    process.exit(1);
-}
+        console.error("サーバー起動失敗:", err);
+        process.exit(1);
+    }
 
 }
 startServer(); //関数を実行
@@ -625,31 +320,21 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 try {
                     await pool.query(
                         //追加した要素がなかったらnull
-                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform, z_Index)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
                         [
                             data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
-                            data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null, data.object.textTransform ?? null
+                            data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null,
+                            data.object.textTransform ?? null, data.object.zIndex ?? null
                         ]
                     );
 
-                    const newObject = {
-    ...data.object,
-    rotation: data.object.rotation ?? 0,
-    fontSize: data.object.fontSize ?? 24,
-    fontWeight: data.object.fontWeight ?? "normal",
-    fontStyle: data.object.fontStyle ?? "normal",
-    textTransform: data.object.textTransform ?? "none",
-    zIndex: data.object.zIndex ?? canvasState.length
-};
                     canvasState.push(newObject);
 
                     //新しい編集が来たら、ポインター後ろを削除
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
                     //履歴に記録
                     const historyEntry = await saveEditHistory({
@@ -661,22 +346,10 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: data.object
                     });
 
-                  
-                    if (historyEntry) {
-                         historyList.push(historyEntry);
-                         historyPointer = historyList.length - 1;
-                        }
+                    historyList.push(historyEntry);
+                    historyPointer = historyList.length - 1;
 
-                        io.emit("message", {
-
-                            action: "ADD",
-
-                            object: newObject,
-
-                            history: historyEntry || null
-
-                        });
- //全員に送信
+                    io.emit("message", { ...data, history: historyEntry }); //全員に送信
                     broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("ADD処理のDB保存エラー:", err);
@@ -714,10 +387,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
-
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
-
 
                     // 変更前の状態を保存（undo用）
                     const beforeState = { ...obj };
@@ -768,9 +437,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
-
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
                     // 削除前のオブジェクトを保存（undo用）
                     const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
@@ -838,262 +504,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "IMPORT_CANVAS": {
-    if (
-        !Array.isArray(
-            data.objects
-        )
-    ) {
-        console.warn(
-            "IMPORT_CANVASのobjectsが不正です"
-        );
-
-        break;
-    }
-
-    /*
-     * 大量データによる負荷を防ぐ
-     */
-    if (
-        data.objects.length >
-        5000
-    ) {
-        console.warn(
-            "読み込める図形は5000件までです"
-        );
-
-        break;
-    }
-
-    const usedIds = new Set();
-
-    const importedObjects =
-        data.objects.map(
-            (source, index) => {
-                let id = String(
-                    source.id ??
-                    `import-${Date.now()}-${index}`
-                );
-
-                if (
-                    !id ||
-                    usedIds.has(id)
-                ) {
-                    id =
-                        `import-${Date.now()}-${index}`;
-                }
-
-                usedIds.add(id);
-
-                const allowedTypes = [
-                    "rect",
-                    "circle",
-                    "triangle",
-                    "text"
-                ];
-
-                const type =
-                    allowedTypes.includes(
-                        source.type
-                    )
-                        ? source.type
-                        : "rect";
-
-                const safeNumber = (
-                    value,
-                    fallback
-                ) => {
-                    const number =
-                        Number(value);
-
-                    return Number.isFinite(
-                        number
-                    )
-                        ? number
-                        : fallback;
-                };
-
-                return {
-                    id,
-                    type,
-
-                    x: safeNumber(
-                        source.x,
-                        100
-                    ),
-
-                    y: safeNumber(
-                        source.y,
-                        100
-                    ),
-
-                    width: Math.max(
-                        30,
-                        safeNumber(
-                            source.width,
-                            type === "text"
-                                ? 180
-                                : 100
-                        )
-                    ),
-
-                    height: Math.max(
-                        30,
-                        safeNumber(
-                            source.height,
-                            type === "text"
-                                ? 60
-                                : 100
-                        )
-                    ),
-
-                    fill:
-                        typeof source.fill ===
-                        "string"
-                            ? source.fill
-                            : type === "text"
-                                ? "#222222"
-                                : "#4f8cff",
-
-                    text:
-                        type === "text"
-                            ? String(
-                                source.text ??
-                                "テキスト"
-                            )
-                            : source.text ??
-                              null,
-
-                    rotation:
-                        safeNumber(
-                            source.rotation,
-                            0
-                        ),
-
-                    zIndex:
-                        safeNumber(
-                            source.zIndex ??
-                            source.z_index,
-                            index
-                        ),
-
-                    fontSize: Math.max(
-                        8,
-                        safeNumber(
-                            source.fontSize ??
-                            source.font_size,
-                            24
-                        )
-                    ),
-
-                    fontWeight:
-                        (
-                            source.fontWeight ??
-                            source.font_weight
-                        ) === "bold"
-                            ? "bold"
-                            : "normal",
-
-                    fontStyle:
-                        (
-                            source.fontStyle ??
-                            source.font_style
-                        ) === "italic"
-                            ? "italic"
-                            : "normal",
-
-                    textTransform:
-                        (
-                            source.textTransform ??
-                            source.text_transform
-                        ) === "uppercase"
-                            ? "uppercase"
-                            : "none"
-                };
-            }
-        );
-
-    const beforeObjects =
-        canvasState.map(
-            (object) => ({
-                ...object
-            })
-        );
-
-    try {
-        if (
-            await truncateHistoryAfterPointer()
-        ) {
-            await reloadHistoryListFromDB();
-        }
-
-        /*
-         * メモリ上のキャンバスを置き換える
-         */
-        canvasState =
-            importedObjects.map(
-                (object) => ({
-                    ...object
-                })
-            );
-
-        /*
-         * DBもキャンバス全体で置き換える
-         */
-        await syncCanvasObjectsToDB();
-
-        const historyEntry =
-            await saveEditHistory({
-                action: "IMPORT",
-                objectId: null,
-                userId,
-                userName,
-                before:
-                    beforeObjects,
-                after:
-                    importedObjects
-            });
-
-        if (historyEntry) {
-            historyList.push(
-                historyEntry
-            );
-
-            historyPointer =
-                historyList.length - 1;
-        }
-
-        /*
-         * 全ユーザーの画面を同期
-         */
-        io.emit("message", {
-            action: "INIT",
-            objects:
-                canvasState
-        });
-
-        broadcastHistory();
-
-        console.log(
-            "JSON読み込み完了:",
-            importedObjects.length,
-            "件"
-        );
-    } catch (error) {
-        /*
-         * 失敗したらメモリを元に戻す
-         */
-        canvasState =
-            beforeObjects;
-
-        console.error(
-            "IMPORT_CANVAS失敗:",
-            error
-        );
-    }
-
-    break;
-}
             case "UNDO": {
                 try {
                     isProcessing = true; // ロック開始
@@ -1128,19 +538,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             canvasState = targetEntry.before;
                             break;
                         }
-                        case "IMPORT": {
-                            canvasState =
-                            Array.isArray(
-                                targetEntry.before
-                            )
-                            ? targetEntry.before.map(
-                                (object) => ({
-                                    ...object
-                                })
-                            )
-                            : [];
-                            break;
-                        }
+
                     }
 
                     //DB(canvas_objects)へ一括反映
@@ -1157,7 +555,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     });
 
                 } catch (err) {
-                    await pool.query('ROLLBACK').catch(() => { });
                     console.error("UNDO処理失敗:", err);
                 } finally {
                     isProcessing = false; // ロック解除
@@ -1199,19 +596,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             canvasState = [];
                             break;
                         }
-                        case "IMPORT": {
-                            canvasState =
-                            Array.isArray(
-                                targetEntry.after
-                            )
-                            ? targetEntry.after.map(
-                                (object) => ({
-                                    ...object
-                                })
-                            )
-                            : [];
-                            break;
-                        }
                     }
 
                     //DB(canvas_objects)へ一括反映
@@ -1228,7 +612,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     });
 
                 } catch (err) {
-                    await pool.query('ROLLBACK').catch(() => { });
                     console.error("REDO処理失敗:", err);
                 } finally {
                     isProcessing = false; // ロック解除
@@ -1283,19 +666,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                     canvasState = entry.before;
                                     break;
                                 }
-                                case "IMPORT": {
-                                    canvasState =
-                                    Array.isArray(
-                                        entry.before
-                                    )
-                                    ? entry.before.map(
-                                        (object) => ({
-                                            ...object
-                                        })
-                                    )
-                                    : [];
-                                    break;
-                                }
                             }
                         }
                     } else {
@@ -1323,18 +693,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                     break;
                                 }
 
-                                case "IMPORT": {
-                                    canvasState =
-                                    Array.isArray(
-                                        entry.after
-                                    )
-                                    ? entry.after.map(
-                                        (object) => ({
-                                            ...object
-                                        })
-                                    ): [];
-                                    break;
-                                }
                             }
                         }
                     }
@@ -1365,70 +723,21 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
             }
 
             case "EXPORT_CODE": {
-  const format = data.format;
+                try {
+                    // 現在のキャンバス状態からコードを生成
+                    const htmlCode = generateHTMLCode(canvasState);
 
-  const baseName = toSafeFileName(
-    data.fileName,
-    "pikva-canvas"
-  );
-
-  console.log("EXPORT_CODE受信:",{
-    format,
-    baseName,
-    objectCount: canvasState.length
-  });
-
-  let content;
-  let outputFileName;
-  let mimeType;
-
-  if (format === "html") {
-    content = generateHTMLCode(
-      canvasState,
-      `${baseName}.css`
-    );
-
-    outputFileName =
-      `${baseName}.html`;
-
-    mimeType =
-      "text/html;charset=utf-8";
-  } else if (format === "css") {
-    content =
-      generateCSSCode(canvasState);
-
-    outputFileName =
-      `${baseName}.css`;
-
-    mimeType =
-      "text/css;charset=utf-8";
-  } else {
-    console.warn(
-      "未対応の出力形式:",
-      format
-    );
-
-    break;
-  }
-
-  /*
-   * 出力を依頼したユーザーだけへ返す。
-   * io.emitではなくsocket.emitを使う。
-   */
-  socket.emit("message", {
-    action: "EXPORT_RESULT",
-
-    file: {
-      format,
-      fileName: outputFileName,
-      mimeType,
-      content,
-    },
-  });
-
-  console.log("EXPORT_RESULT送信:",outputFileName);
-  break;
-}
+                    // リクエストをしてきた本人にだけ生成結果を返す 
+                    socket.emit("message", {
+                        action: "EXPORT_RESULT",
+                        html: htmlCode
+                    });
+                    console.log(`コード生成を実行しました (userId: ${userId})`);
+                } catch (err) {
+                    console.error("コード生成失敗:", err);
+                }
+                break;
+            }
 
             default:
                 console.log("存在しない操作です", data.action);
