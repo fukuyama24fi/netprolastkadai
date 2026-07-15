@@ -1462,7 +1462,7 @@ const App = () => {
               }
             }}
           >
-            {viewShapes.map((shape) => {
+            {viewShapes.map((shape,shapeIndex) => {
               const isSelected =
                 shape.id === selectedId;
 
