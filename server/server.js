@@ -379,7 +379,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
 
                     // DB更新
                     const keys = Object.keys(updateData)
-                        .map((key, index) => `${key} = $${index + 2}`)
+                        .map((key, index) => `${UPDATE_COLUMN_MAP[key]} = $${index + 2}`)
                         .join(",");
                     const values = Object.values(updateData);
                     await pool.query(
