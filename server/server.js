@@ -320,7 +320,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 try {
                     await pool.query(
                         //追加した要素がなかったらnull
-                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform, z_Index)
+                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform, z_index)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
                         [
                             data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
