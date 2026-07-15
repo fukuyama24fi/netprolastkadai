@@ -99,9 +99,9 @@ export function useCanvasSocket() {
             prev.map((shape) =>
               shape.id === targetId
                 ? {
-                    ...shape,
-                    ...changes,
-                  }
+                  ...shape,
+                  ...changes,
+                }
                 : shape
             )
           );
@@ -147,7 +147,7 @@ export function useCanvasSocket() {
     };
   }, [addHistoryIfNeeded]);
 
- //エクスポートをリクエストする関数
+  //エクスポートをリクエストする関数
   const exportCode = useCallback(() => {
     socketService.sendMessage("EXPORT", { userName });
   }, [userName]);
@@ -162,101 +162,78 @@ export function useCanvasSocket() {
 
   // 四角・円・三角・テキスト共通の追加処理
   const addShape = useCallback(
-  (type) => {
-  
-    const maxZIndex = shapes.reduce(
-  (maxValue, shape, index) => {
-    const shapeZIndex = Number(
-      shape.zIndex
-    );
+    (type) => {
+      const commonShape = {
+        id: crypto.randomUUID(),
+        x: randomX,
+        y: randomY, // ここでランダムな値を割り当て
+        type,
+        rotation: 0,
+      };
 
-    const currentZIndex =
-      Number.isFinite(shapeZIndex)
-        ? shapeZIndex
-        : index;
+      let newShape;
 
-    return Math.max(
-      maxValue,
-      currentZIndex
-    );
-  },
-  -1
-);
+      switch (type) {
+        case "circle": {
+          newShape = {
+            ...commonShape,
+            width: 100,
+            height: 100,
+            fill: "#ff6b6b",
+          };
 
-const commonShape = {
-  id: crypto.randomUUID(),
-  type,
-  x: 300,
-  y: 300,
-  rotation: 0,
+          break;
+        }
 
-  // 新しい図形は一番前
-  zIndex: maxZIndex + 1,
-};
+        case "triangle": {
+          newShape = {
+            ...commonShape,
+            width: 120,
+            height: 100,
+            fill: "#f5b942",
+          };
 
-    let newShape;
+          break;
+        }
 
-    switch (type) {
-      case "circle": {
-        newShape = {
-          ...commonShape,
-          width: 100,
-          height: 100,
-          fill: "#ff6b6b",
-        };
+        case "text": {
+          newShape = {
+            ...commonShape,
+            width: 180,
+            height: 60,
+            fill: "#222222",
+            text: "テキスト",
 
-        break;
+            fontSize: 24,
+            fontWeight: "normal",
+            fontStyle: "normal",
+            textTransform: "none",
+          };
+
+          break;
+        }
+
+        case "rect":
+        default: {
+          newShape = {
+            ...commonShape,
+            type: "rect",
+            width: 100,
+            height: 100,
+            fill: "#4f8cff",
+          };
+
+          break;
+        }
       }
 
-      case "triangle": {
-        newShape = {
-          ...commonShape,
-          width: 120,
-          height: 100,
-          fill: "#f5b942",
-        };
-
-        break;
-      }
-
-      case "text": {
-        newShape = {
-          ...commonShape,
-          width: 180,
-          height: 60,
-          fill: "#222222",
-          text: "テキスト",
-
-          fontSize: 24,
-          fontWeight: "normal",
-          fontStyle: "normal",
-          textTransform: "none",
-        };
-
-        break;
-      }
-
-      case "rect":
-      default: {
-        newShape = {
-          ...commonShape,
-          type: "rect",
-          width: 100,
-          height: 100,
-          fill: "#4f8cff",
-        };
-
-        break;
-      }
-    }
-
-    socketService.sendMessage("ADD", {
-      object: newShape,
-      userName,
-    });
-  },
-  [shapes,userName]
-);
+      socketService.sendMessage("ADD", {
+        object: newShape,
+        userName,
+      });
+    },
+    [userName]
+  );
 
   // 既存のApp.jsxを壊さないために残す
   const addRect = useCallback(() => {
@@ -270,9 +247,9 @@ const commonShape = {
         prev.map((shape) =>
           shape.id === id
             ? {
-                ...shape,
-                ...changes,
-              }
+              ...shape,
+              ...changes,
+            }
             : shape
         )
       );
