@@ -90,7 +90,7 @@ async function sendHistory(socket) {
                 h.before, 
                 h.after,
                 h.created_at AS "createdAt"
-             FROM edit_history
+             FROM edit_history h
              ORDER BY h.created_at DESC
              LIMIT 100`
         );
