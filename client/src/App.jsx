@@ -15,7 +15,7 @@ const TYPE_LABELS = {
   text: "テキスト",
 };
 
-const ANAO_THRESHOLD = 6;
+const SNAP_THRESHOLD = 6;
 
 const App = () => {
   const {
