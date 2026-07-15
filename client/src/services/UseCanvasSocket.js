@@ -161,7 +161,7 @@ export function useCanvasSocket() {
   }, []);
 
   // 四角・円・三角・テキスト共通の追加処理
-const addShape = useCallback(
+  const addShape = useCallback(
   (type) => {
     const commonShape = {
       id: crypto.randomUUID(),
