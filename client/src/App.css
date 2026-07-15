@@ -1,282 +1,132 @@
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: sans-serif;
-  background: #f5f5f5;
-  overflow: hidden;
-}
-
-.app {
-  width: 100vw;
-  height: 100vh;
-
-  display: flex;
-  flex-direction: column;
-
-  overflow: hidden;
-}
-
-.header {
-  height: 56px;
-  flex-shrink: 0;
-
-  background: white;
-  border-bottom: 1px solid #ddd;
-}
-
-
-
-
-.app-header {
-  height: 56px;
-  padding: 8px 16px;
-
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  flex-shrink: 0;
-
-  background: #ffffff;
-  border-bottom: 1px solid #dddddd;
-}
-
-.app-body {
-  display: flex;
-  flex: 1;
-
-  min-width: 0;
-  min-height: 0;
-}
-
-.app-header-title {
-  margin-right: 8px;
-  font-size: 20px;
-  color: #222222;
-}
-
-.file-name-input {
-  width: 200px;
-  height: 36px;
-  padding: 6px 10px;
-
-  border: 1px solid #cccccc;
-  border-radius: 6px;
-}
-
-.app-header button {
-  height: 36px;
-  padding: 6px 14px;
-
-  border: 1px solid #cccccc;
-  border-radius: 6px;
-
-  background: #ffffff;
-  color: #222222;
-
-  cursor: pointer;
-}
-
-.app-header button:hover {
-  background: #f0f0f0;
-}
-
-/* 左ツールバー */
+/* 左ツールが増えてもスクロールできるようにする */
 .tool {
-  width: 180px;
-  height: 100vh;
-  padding: 16px;
-
-  background: #222;
-
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-
-  flex-shrink: 0;
+  overflow-y: auto;
 }
 
-.tool h1 {
-  margin: 0 0 16px;
-  color: white;
-  font-size: 20px;
-}
-
-/* ツールボタン */
-.tool button {
-  width: 100%;
-  padding: 8px 12px;
-
-  border: none;
-  border-radius: 6px;
-
-  background: #4f8cff;
-  color: white;
-
-  cursor: pointer;
-}
-
-.tool button:hover {
-  opacity: 0.9;
-}
-
-/* タイトルとUndo/Redoを横並び */
-.tool-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-/* Undo/Redoボタンを横並び */
-.history-buttons {
-  display: flex;
-  gap: 6px;
-}
-.shape-buttons{
-    display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.shape-buttons button {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-
-  border: none;
-  border-radius: 6px;
-
-  cursor: pointer;
-}
-
-/* アイコンボタン */
-.icon-button {
-  width: 34px;
-  height: 34px;
-  border: none;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: white;
-  font-size: 18px;
-  cursor: pointer;
-
-  display: flex;
-  justify-content: center;
-  align-items: center;
-
-  transition: background 0.2s, transform 0.15s;
-}
-
-.icon-button:hover {
-  background: #2563eb;
-}
-
-.icon-button:active {
-  transform: scale(0.92);
-}
-
-/* 削除ボタン */
-.delete-button-main {
-  margin-top: auto;
-  background: #e74c3c !important;
-}
-
-/* コード出力エリアのコンテナ */
-.export-container {
-  display: flex;
-  flex-direction: column;
-  margin-top: 10px;
-  flex: 1; /* ツールバーの余った高さを全て使う */
-  min-height: 150px;
-}
-
-/* コードを表示するテキストエリア */
-.export-textarea {
-  width: 100%;
-  height: 100%;
-  padding: 8px;
-  
-  background: #1e1e1e;
-  color: #d4d4d4;
-  border: 1px solid #555;
-  border-radius: 6px;
-  
-  font-family: monospace;
-  font-size: 11px;
-  line-height: 1.4;
-  
-  resize: vertical; /* 縦方向だけリサイズ可能 */
-  outline: none;
-  white-space: pre; /* コードの改行をそのまま維持 */
-  overflow: auto;
-}
-
-/* カラーピッカー */
-.color-tool {
-  margin-top: 8px;
-
-  color: white;
-  font-size: 14px;
-
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.color-tool input {
-  width: 100%;
-  height: 36px;
-
-  border: none;
-  border-radius: 4px;
-
-  cursor: pointer;
-}
-
-/* キャンバスを中央配置するエリア */
-.main {
-  flex: 1;
-
-  display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
-
-  padding: 24px;
-  overflow: auto;
-
-}
-
-/* React版では #canvas ではなく .canvas */
-.canvas {
-  position: relative;
-
-  width: 2000px;
-  height: 1400px;
-
-
-  border: 1px solid #ccc;
-
-  overflow: visible;
-  flex-shrink: 0;
-}
-
-/* 図形共通 */
+/* 図形本体 */
 .shape {
   position: absolute;
+  overflow: visible;
 
   cursor: move;
   user-select: none;
-  overflow: visible;
 }
 
+/* 図形の見た目を担当する内側要素 */
+.shape-body {
+  width: 100%;
+  height: 100%;
 
+  pointer-events: none;
+}
+
+/* 円 */
+.shape.circle .shape-body {
+  border-radius: 50%;
+}
+
+/* 三角形 */
+.shape.triangle .shape-body {
+  clip-path: polygon(
+    50% 0%,
+    100% 100%,
+    0% 100%
+  );
+}
+
+/* テキスト */
+.shape.text .shape-body {
+  display: block;
+
+  overflow: hidden;
+  background: transparent;
+
+  pointer-events: auto;
+}
+
+/* 通常時の文字 */
+.text-value {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+
+  line-height: 1.2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  pointer-events: none;
+}
+
+/* 図形内テキスト入力 */
+.text-editor {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+
+  border: none;
+  outline: none;
+  resize: none;
+
+  box-sizing: border-box;
+
+  background: transparent;
+  color: inherit;
+
+  font: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  text-transform: inherit;
+
+  line-height: 1.2;
+}
+
+/* 選択枠 */
+.shape.selected {
+  outline: 2px solid #4d11bd;
+  outline-offset: 3px;
+}
+
+/* テキスト編集中 */
+.shape.text.editing {
+  cursor: text;
+  user-select: text;
+
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+}
+
+/* リサイズハンドル */
+.resize-handle {
+  display: none;
+  position: absolute;
+
+  right: -6px;
+  bottom: -6px;
+
+  width: 12px;
+  height: 12px;
+
+  border: 2px solid #4d11bd;
+  border-radius: 2px;
+
+  background: white;
+
+  cursor: nwse-resize;
+  z-index: 20;
+}
+
+.shape.selected .resize-handle {
+  display: block;
+}
+
+/* 回転ハンドル */
 .rotate-handle {
   position: absolute;
+
   top: -42px;
   left: 50%;
 
@@ -287,37 +137,47 @@ body {
 
   border: 2px solid #4d11bd;
   border-radius: 50%;
+
   background: white;
 
   cursor: grab;
-  z-index: 20;
-
+  z-index: 30;
 }
+
 .rotate-handle:active {
   cursor: grabbing;
 }
 
+/* 回転ハンドルと図形をつなぐ線 */
 .rotate-handle::after {
   content: "";
 
   position: absolute;
-  left: 50%;
+
   top: 14px;
+  left: 50%;
 
   width: 2px;
-  height: 24px;
+  height: 25px;
 
   transform: translateX(-50%);
+
   background: #4d11bd;
 }
 
+/* 回転スライダー */
 .rotation-tool {
   display: flex;
   flex-direction: column;
   gap: 6px;
 
+  padding: 8px;
+
   color: white;
   font-size: 13px;
+
+  background: #333;
+  border-radius: 6px;
 }
 
 .rotation-tool input {
@@ -328,6 +188,7 @@ body {
   text-align: right;
 }
 
+/* テキスト書式パネル */
 .text-format-tools {
   display: flex;
   flex-direction: column;
@@ -337,6 +198,7 @@ body {
 
   color: white;
   background: #333;
+
   border-radius: 6px;
 }
 
@@ -356,6 +218,7 @@ body {
   border-radius: 4px;
 }
 
+/* 太字・斜体・大文字ボタン */
 .text-format-buttons {
   display: flex;
   gap: 6px;
@@ -366,6 +229,7 @@ body {
   min-width: 0;
 
   padding: 7px;
+
   background: #555;
 }
 
@@ -373,175 +237,14 @@ body {
   background: #4f8cff;
 }
 
-.shape-body {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+/* 削除対象がない時 */
+.delete-button-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
-/* 四角形 */
-.shape.rect .shape-body {
-  border-radius: 0;
-}
-
-/* 円 */
-.shape.circle .shape-body {
-  border-radius: 50%;
-}
-
-/* 三角形 */
-.shape.triangle .shape-body {
-  clip-path: polygon(
-    50% 0%,
-    100% 100%,
-    0% 100%
-  );
-}
-
-/* テキスト全体 */
-.shape.text .shape-body {
-  display: block;
-
-  background: transparent;
-  overflow: hidden;
-
-  pointer-events: auto;
-}
-
-/* 通常表示されるテキスト */
-.text-value {
-  display: block;
-
-  width: 100%;
-  height: 100%;
-  padding: 4px 8px;
-
-  line-height: 1.2;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-
-  pointer-events: none;
-}
-
-/* 編集中の入力欄 */
-.text-editor {
-  display: block;
-
-  width: 100%;
-  height: 100%;
-  padding: 4px 8px;
-
-  border: none;
-  outline: none;
-  resize: none;
-
-  background: transparent;
-  color: inherit;
-
-  font: inherit;
-  line-height: 1.2;
-
-  font-weight: inherit;
-  font-style: inherit;
-  text-transform: inherit;
-  
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-/* 編集中は文字入力カーソル */
-.shape.text.editing {
-  cursor: text;
-  user-select: text;
-}
-
-/* 編集中は選択枠を少し分かりやすくする */
-.shape.text.editing {
-  outline: 2px solid #4f8cff;
-  outline-offset: 2px;
-}
-
-
-/* 選択中の図形 */
-.shape.selected {
-  outline: 2px solid #4d11bd;
-  outline-offset: 2px;
-}
-
-/* リサイズハンドル */
-.resize-handle {
-  display: none;
-
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-
-  width: 12px;
-  height: 12px;
-
-  background: white;
-  border: 2px solid #4d11bd;
-  border-radius: 2px;
-
-  cursor: nwse-resize;
-  z-index: 10;
-}
-
-/* 選択中だけリサイズハンドルを表示 */
-.shape.selected .resize-handle {
-  display: block;
-}
-
-/* 編集履歴パネル */
-.history-section {
-  width: 260px;
-  height: 100vh;
-
-  padding: 16px;
-
-  background: #fafafa;
-  border-left: 1px solid #ddd;
-
-  overflow: auto;
-}
-
-.history-section h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
-  color: #222;
-}
-
-.history-list {
-  margin: 0;
-  padding-left: 18px;
-
-  font-size: 12px;
-  color: #555;
-}
-
-.history-list li {
-  margin-bottom: 6px;
-}
-
-.history-end{
+/* 履歴自動スクロールの目印 */
+.history-end {
   height: 1px;
   list-style: none;
 }
-
-
-/*履歴リスト：ホバー時 */
-.history-list li:hover {
-  background-color: #e8f4ff;
-}
-
-/*履歴リスト：クリック時 */
-.history-list li:active {
-  background-color: #d0e8ff;
-}
-
-/*無効状態（インタラクション中） */
-.history-list li[style*="opacity: 0.5"]:hover {
-  background-color: transparent;
-  cursor: not-allowed !important;
-}
-

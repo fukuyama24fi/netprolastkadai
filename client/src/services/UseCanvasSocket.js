@@ -161,78 +161,79 @@ export function useCanvasSocket() {
   }, []);
 
   // 四角・円・三角・テキスト共通の追加処理
-  const addShape = useCallback(
-    (type) => {
-      const commonShape = {
-        id: crypto.randomUUID(),
-        type,
-        x: 300,
-        y: 300,
-        rotation: 0,
-      };
+const addShape = useCallback(
+  (type) => {
+    const commonShape = {
+      id: crypto.randomUUID(),
+      type,
+      x: 300,
+      y: 300,
+      rotation: 0,
+    };
 
-      let newShape;
+    let newShape;
 
-      switch (type) {
-        case "circle": {
-          newShape = {
-            ...commonShape,
-            width: 100,
-            height: 100,
-            fill: "#ff6b6b",
-          };
+    switch (type) {
+      case "circle": {
+        newShape = {
+          ...commonShape,
+          width: 100,
+          height: 100,
+          fill: "#ff6b6b",
+        };
 
-          break;
-        }
-
-        case "triangle": {
-          newShape = {
-            ...commonShape,
-            width: 120,
-            height: 100,
-            fill: "#f5b942",
-          };
-
-          break;
-        }
-
-        case "text": {
-  newShape = {
-    ...commonShape,
-    width: 180,
-    height: 50,
-    fill: "#222222",
-    text: "テキスト",
-    fontSize: 24,
-    fontWeight: "normal",
-    fontStyle:"normal",
-    textTransform: "normal",
-  };
-
-  break;
-}
-
-        case "rect":
-        default: {
-          newShape = {
-            ...commonShape,
-            type: "rect",
-            width: 100,
-            height: 100,
-            fill: "#4f8cff",
-          };
-
-          break;
-        }
+        break;
       }
 
-      socketService.sendMessage("ADD", {
-        object: newShape,
-        userName,
-      });
-    },
-    [userName]
-  );
+      case "triangle": {
+        newShape = {
+          ...commonShape,
+          width: 120,
+          height: 100,
+          fill: "#f5b942",
+        };
+
+        break;
+      }
+
+      case "text": {
+        newShape = {
+          ...commonShape,
+          width: 180,
+          height: 60,
+          fill: "#222222",
+          text: "テキスト",
+
+          fontSize: 24,
+          fontWeight: "normal",
+          fontStyle: "normal",
+          textTransform: "none",
+        };
+
+        break;
+      }
+
+      case "rect":
+      default: {
+        newShape = {
+          ...commonShape,
+          type: "rect",
+          width: 100,
+          height: 100,
+          fill: "#4f8cff",
+        };
+
+        break;
+      }
+    }
+
+    socketService.sendMessage("ADD", {
+      object: newShape,
+      userName,
+    });
+  },
+  [userName]
+);
 
   // 既存のApp.jsxを壊さないために残す
   const addRect = useCallback(() => {
