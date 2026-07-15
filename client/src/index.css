@@ -22,3 +22,16 @@ button,
 input {
   font: inherit;
 }
+
+
+/* PNG出力中は操作用UIを隠す */
+.canvas.is-exporting .shape.selected {
+  outline: none !important;
+}
+
+.canvas.is-exporting .resize-handle,
+.canvas.is-exporting .rotate-handle,
+.canvas.is-exporting .shape-measurement,
+.canvas.is-exporting .smart-guide {
+  display: none !important;
+}

@@ -5,8 +5,10 @@ import {
   useState,
 } from "react";
 
+import {toPng} from "html-to-image";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
+
 
 const TYPE_LABELS = {
   rect: "四角形",
@@ -30,7 +32,7 @@ const App = () => {
     undo,
     redo,
     jumpToHistory,
-    exportedHtml,
+    exportedFile,
     exportCode,
   } = useCanvasSocket();
 
@@ -94,29 +96,39 @@ const App = () => {
   /*
    * サーバーからHTMLが返ってきたらダウンロードする。
    */
-  useEffect(() => {
-    if (!exportedHtml) {
-      return;
+useEffect(() => {
+  if (
+    !exportedFile?.content ||
+    !exportedFile?.fileName
+  ) {
+    return;
+  }
+
+  const blob = new Blob(
+    [exportedFile.content],
+    {
+      type:
+        exportedFile.mimeType ||
+        "text/plain;charset=utf-8",
     }
+  );
 
-    const blob = new Blob([exportedHtml], {
-      type: "text/html",
-    });
+  const downloadUrl =
+    URL.createObjectURL(blob);
 
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+  const link =
+    document.createElement("a");
 
-    link.href = downloadUrl;
-    link.download = `${
-      fileName.trim() || "pikva-export"
-    }.html`;
+  link.href = downloadUrl;
+  link.download =
+    exportedFile.fileName;
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
-    URL.revokeObjectURL(downloadUrl);
-  }, [exportedHtml, fileName]);
+  URL.revokeObjectURL(downloadUrl);
+}, [exportedFile]);
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -206,6 +218,49 @@ const App = () => {
     },
     []
   );
+
+const handleExportPng = useCallback(async () => {
+  const canvas = canvasRef.current;
+
+  if (!canvas) {
+    return;
+  }
+
+  const safeFileName = (
+    fileName.trim() || "pikva-canvas"
+  ).replace(/[\\/:*?"<>|]/g, "_");
+
+  try {
+    /*
+     * 選択枠やガイド線をPNGへ含めないため、
+     * 出力中だけクラスを付ける
+     */
+    canvas.classList.add("is-exporting");
+
+    await new Promise((resolve) => {
+      requestAnimationFrame(resolve);
+    });
+
+    const dataUrl = await toPng(canvas, {
+      backgroundColor: "#ffffff",
+      pixelRatio: 1,
+    });
+
+    const link = document.createElement("a");
+
+    link.href = dataUrl;
+    link.download = `${safeFileName}.png`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    console.error("PNG出力に失敗しました", error);
+    window.alert("PNG出力に失敗しました");
+  } finally {
+    canvas.classList.remove("is-exporting");
+  }
+}, [fileName]);
 
   /*
    * 選択中図形を画面とサーバーの両方で変更する。
@@ -1386,21 +1441,25 @@ const sendBackward = useCallback(() => {
           開く
         </button>
 
-        <button type="button">
+        <button type="button" onClick={handleExportPng}>
           PNG出力
         </button>
 
         <button
           type="button"
-          onClick={exportCode}
+           onClick={() => {
+    exportCode("html", fileName);
+  }}
         >
           HTML出力
         </button>
 
-        <button
-          type="button"
-          onClick={exportCode}
-        >
+       <button
+  type="button"
+  onClick={() => {
+    exportCode("css", fileName);
+  }}
+>
           CSS出力
         </button>
       </header>

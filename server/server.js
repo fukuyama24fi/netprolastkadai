@@ -8,7 +8,11 @@ import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライ
 
 dotenv.config(); //.envファイルを適用
 import { pool } from './config/db.js'; //データベース接続用
-import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
+import {
+  generateHTMLCode,
+  generateCSSCode,
+  toSafeFileName,
+} from "./utils/codeGenerator.js"; //コード抽出用
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -711,22 +715,64 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "EXPORT": {
-                try {
-                    // 現在のキャンバス状態からコードを生成
-                    const htmlCode = generateHTMLCode(canvasState);
+            case "EXPORT_CODE": {
+  const format = data.format;
 
-                    // リクエストをしてきた本人にだけ生成結果を返す 
-                    socket.emit("message", {
-                        action: "EXPORT_RESULT",
-                        html: htmlCode
-                    });
-                    console.log(`コード生成を実行しました (userId: ${userId})`);
-                } catch (err) {
-                    console.error("コード生成失敗:", err);
-                }
-                break;
-            }
+  const baseName = toSafeFileName(
+    data.fileName,
+    "pikva-canvas"
+  );
+
+  let content;
+  let outputFileName;
+  let mimeType;
+
+  if (format === "html") {
+    content = generateHTMLCode(
+      canvasState,
+      `${baseName}.css`
+    );
+
+    outputFileName =
+      `${baseName}.html`;
+
+    mimeType =
+      "text/html;charset=utf-8";
+  } else if (format === "css") {
+    content =
+      generateCSSCode(canvasState);
+
+    outputFileName =
+      `${baseName}.css`;
+
+    mimeType =
+      "text/css;charset=utf-8";
+  } else {
+    console.warn(
+      "未対応の出力形式:",
+      format
+    );
+
+    break;
+  }
+
+  /*
+   * 出力を依頼したユーザーだけへ返す。
+   * io.emitではなくsocket.emitを使う。
+   */
+  socket.emit("message", {
+    action: "EXPORT_RESULT",
+
+    file: {
+      format,
+      fileName: outputFileName,
+      mimeType,
+      content,
+    },
+  });
+
+  break;
+}
 
             default:
                 console.log("存在しない操作です", data.action);

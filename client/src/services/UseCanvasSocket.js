@@ -4,6 +4,8 @@ import socketService from "./socketService";
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
+  const [exportedFile, setExportedFile] =
+  useState(null);
   const [userName, setUserNameState] = useState(
     socketService.getUserName()
   );
@@ -47,6 +49,8 @@ export function useCanvasSocket() {
 
           break;
         }
+
+        
 
         case "HISTORY_RESPONSE": {
           setHistory(data.history || []);
@@ -127,10 +131,10 @@ export function useCanvasSocket() {
           break;
         }
 
-        case "EXPORT_RESULT": {
-          setExportedHtml(data.html);
-          break;
-        }
+      case "EXPORT_RESULT": {
+  setExportedFile(data.file || null);
+  break;
+}
 
         default:
           console.log(
@@ -148,9 +152,26 @@ export function useCanvasSocket() {
   }, [addHistoryIfNeeded]);
 
   //エクスポートをリクエストする関数
-  const exportCode = useCallback(() => {
-    socketService.sendMessage("EXPORT", { userName });
-  }, [userName]);
+ const exportCode = useCallback(
+  (format, fileName) => {
+    if (
+      format !== "html" &&
+      format !== "css"
+    ) {
+      return;
+    }
+
+    socketService.sendMessage(
+      "EXPORT_CODE",
+      {
+        format,
+        fileName:
+          fileName || "pikva-canvas",
+      }
+    );
+  },
+  []
+);
 
   const setUserName = useCallback((name) => {
     const nextName =
