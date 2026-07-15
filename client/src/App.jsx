@@ -23,6 +23,169 @@ const TYPE_LABELS = {
 
 const SNAP_THRESHOLD = 6;
 
+const IMPORT_ALLOWED_TYPES = new Set([
+  "rect",
+  "circle",
+  "triangle",
+  "text",
+]);
+
+function createImportedId(index) {
+  if (
+    globalThis.crypto &&
+    typeof globalThis.crypto.randomUUID ===
+      "function"
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `shape-${Date.now()}-${index}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+}
+
+function toImportedNumber(
+  value,
+  fallback
+) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+}
+
+function normalizeImportedShapes(
+  objects
+) {
+  const usedIds = new Set();
+
+  return objects.map(
+    (rawObject, index) => {
+      const source =
+        rawObject &&
+        typeof rawObject === "object"
+          ? rawObject
+          : {};
+
+      const type =
+        IMPORT_ALLOWED_TYPES.has(
+          source.type
+        )
+          ? source.type
+          : "rect";
+
+      let id = String(
+        source.id ?? ""
+      ).trim();
+
+      if (
+        !id ||
+        usedIds.has(id)
+      ) {
+        id = createImportedId(index);
+      }
+
+      usedIds.add(id);
+
+      return {
+        id,
+        type,
+
+        x: toImportedNumber(
+          source.x,
+          100 + index * 20
+        ),
+
+        y: toImportedNumber(
+          source.y,
+          100 + index * 20
+        ),
+
+        width: Math.max(
+          30,
+          toImportedNumber(
+            source.width,
+            type === "text"
+              ? 180
+              : 100
+          )
+        ),
+
+        height: Math.max(
+          30,
+          toImportedNumber(
+            source.height,
+            type === "text"
+              ? 60
+              : 100
+          )
+        ),
+
+        fill:
+          typeof source.fill ===
+          "string"
+            ? source.fill
+            : type === "text"
+              ? "#222222"
+              : "#4f8cff",
+
+        text:
+          type === "text"
+            ? String(
+                source.text ??
+                  "テキスト"
+              )
+            : source.text ?? null,
+
+        rotation: toImportedNumber(
+          source.rotation,
+          0
+        ),
+
+        zIndex: toImportedNumber(
+          source.zIndex ??
+            source.z_index,
+          index
+        ),
+
+        fontSize: Math.max(
+          8,
+          toImportedNumber(
+            source.fontSize ??
+              source.font_size,
+            24
+          )
+        ),
+
+        fontWeight:
+          (
+            source.fontWeight ??
+            source.font_weight
+          ) === "bold"
+            ? "bold"
+            : "normal",
+
+        fontStyle:
+          (
+            source.fontStyle ??
+            source.font_style
+          ) === "italic"
+            ? "italic"
+            : "normal",
+
+        textTransform:
+          (
+            source.textTransform ??
+            source.text_transform
+          ) === "uppercase"
+            ? "uppercase"
+            : "none",
+      };
+    }
+  );
+}
+
 /*
  * HTML内に表示する文字を安全にする
  */
@@ -360,6 +523,7 @@ const {
   undo,
   redo,
   jumpToHistory,
+  importCanvas,
 } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -381,6 +545,7 @@ const {
   const canvasRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
+  const openFileInputRef = useRef(null);
 
   const viewShapesRef = useRef([]);
   const interactionRef = useRef(null);
@@ -484,6 +649,112 @@ const {
 
     URL.revokeObjectURL(downloadUrl);
   }, [fileName, viewShapes]);
+
+  const handleOpenJsonFile =
+  useCallback(
+    async (event) => {
+      const file =
+        event.target.files?.[0];
+
+      /*
+       * 同じファイルを続けて選べるように
+       * valueを空にする
+       */
+      event.target.value = "";
+
+      if (!file) {
+        return;
+      }
+
+      try {
+        const jsonText =
+          await file.text();
+
+        const parsedData =
+          JSON.parse(jsonText);
+
+        /*
+         * Pikvaの保存形式と、
+         * 図形配列だけのJSONの両方に対応
+         */
+        const sourceObjects =
+          Array.isArray(parsedData)
+            ? parsedData
+            : parsedData?.objects;
+
+        if (
+          !Array.isArray(
+            sourceObjects
+          )
+        ) {
+          throw new Error(
+            "objects配列がありません"
+          );
+        }
+
+        const importedShapes =
+          normalizeImportedShapes(
+            sourceObjects
+          );
+
+        const jsonFileName =
+          !Array.isArray(
+            parsedData
+          ) &&
+          typeof parsedData.fileName ===
+            "string"
+            ? parsedData.fileName.trim()
+            : "";
+
+        const fileBaseName =
+          file.name.replace(
+            /\.json$/i,
+            ""
+          );
+
+        setFileName(
+          jsonFileName ||
+            fileBaseName ||
+            "pikva-canvas"
+        );
+
+        setSelectedId(null);
+        setEditingId(null);
+        setInteraction(null);
+
+        setSmartGuides({
+          vertical: [],
+          horizontal: [],
+        });
+
+        /*
+         * サーバーへキャンバス全体を送る
+         */
+        importCanvas(
+          importedShapes
+        );
+
+        console.log(
+          "JSON読み込み要求:",
+          {
+            fileName: file.name,
+            objectCount:
+              importedShapes.length,
+          }
+        );
+      } catch (error) {
+        console.error(
+          "JSON読み込みエラー:",
+          error
+        );
+
+        window.alert(
+          `JSONを開けませんでした。\n${error.message}`
+        );
+      }
+    },
+    [importCanvas]
+  );
 
   /*
    * サーバーを待たず、画面側だけ先に変更する。
@@ -1816,9 +2087,14 @@ const sendBackward = useCallback(() => {
           保存
         </button>
 
-        <button type="button">
+        
+        <button type="button" onClick={() => {
+          openFileInputRef.current?.click();
+        }}>
           開く
         </button>
+
+        <input ref={openFileInputRef} type="file" accept=".json,application/json" style={{display: "none",}} onChange={handleOpenJsonFile}></input>
 
         <button type="button" onClick={handleExportPng}>
           PNG出力

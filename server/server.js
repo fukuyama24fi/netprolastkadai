@@ -308,8 +308,10 @@ if (historyList.length > 0) {
         );
 
         break;
-    }
 
+        
+    }
+    
     const idAlreadyExists =
         canvasState.some(
             (obj) =>
@@ -532,6 +534,21 @@ if (historyList.length > 0) {
                 reconstructedState = [];
                 break;
             }
+
+            case "IMPORT": {
+    reconstructedState =
+        Array.isArray(
+            history.after
+        )
+            ? history.after.map(
+                (object) => ({
+                    ...object
+                })
+            )
+            : [];
+
+    break;
+}
 
             default:
                 break;
@@ -821,6 +838,262 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
+            case "IMPORT_CANVAS": {
+    if (
+        !Array.isArray(
+            data.objects
+        )
+    ) {
+        console.warn(
+            "IMPORT_CANVASのobjectsが不正です"
+        );
+
+        break;
+    }
+
+    /*
+     * 大量データによる負荷を防ぐ
+     */
+    if (
+        data.objects.length >
+        5000
+    ) {
+        console.warn(
+            "読み込める図形は5000件までです"
+        );
+
+        break;
+    }
+
+    const usedIds = new Set();
+
+    const importedObjects =
+        data.objects.map(
+            (source, index) => {
+                let id = String(
+                    source.id ??
+                    `import-${Date.now()}-${index}`
+                );
+
+                if (
+                    !id ||
+                    usedIds.has(id)
+                ) {
+                    id =
+                        `import-${Date.now()}-${index}`;
+                }
+
+                usedIds.add(id);
+
+                const allowedTypes = [
+                    "rect",
+                    "circle",
+                    "triangle",
+                    "text"
+                ];
+
+                const type =
+                    allowedTypes.includes(
+                        source.type
+                    )
+                        ? source.type
+                        : "rect";
+
+                const safeNumber = (
+                    value,
+                    fallback
+                ) => {
+                    const number =
+                        Number(value);
+
+                    return Number.isFinite(
+                        number
+                    )
+                        ? number
+                        : fallback;
+                };
+
+                return {
+                    id,
+                    type,
+
+                    x: safeNumber(
+                        source.x,
+                        100
+                    ),
+
+                    y: safeNumber(
+                        source.y,
+                        100
+                    ),
+
+                    width: Math.max(
+                        30,
+                        safeNumber(
+                            source.width,
+                            type === "text"
+                                ? 180
+                                : 100
+                        )
+                    ),
+
+                    height: Math.max(
+                        30,
+                        safeNumber(
+                            source.height,
+                            type === "text"
+                                ? 60
+                                : 100
+                        )
+                    ),
+
+                    fill:
+                        typeof source.fill ===
+                        "string"
+                            ? source.fill
+                            : type === "text"
+                                ? "#222222"
+                                : "#4f8cff",
+
+                    text:
+                        type === "text"
+                            ? String(
+                                source.text ??
+                                "テキスト"
+                            )
+                            : source.text ??
+                              null,
+
+                    rotation:
+                        safeNumber(
+                            source.rotation,
+                            0
+                        ),
+
+                    zIndex:
+                        safeNumber(
+                            source.zIndex ??
+                            source.z_index,
+                            index
+                        ),
+
+                    fontSize: Math.max(
+                        8,
+                        safeNumber(
+                            source.fontSize ??
+                            source.font_size,
+                            24
+                        )
+                    ),
+
+                    fontWeight:
+                        (
+                            source.fontWeight ??
+                            source.font_weight
+                        ) === "bold"
+                            ? "bold"
+                            : "normal",
+
+                    fontStyle:
+                        (
+                            source.fontStyle ??
+                            source.font_style
+                        ) === "italic"
+                            ? "italic"
+                            : "normal",
+
+                    textTransform:
+                        (
+                            source.textTransform ??
+                            source.text_transform
+                        ) === "uppercase"
+                            ? "uppercase"
+                            : "none"
+                };
+            }
+        );
+
+    const beforeObjects =
+        canvasState.map(
+            (object) => ({
+                ...object
+            })
+        );
+
+    try {
+        if (
+            await truncateHistoryAfterPointer()
+        ) {
+            await reloadHistoryListFromDB();
+        }
+
+        /*
+         * メモリ上のキャンバスを置き換える
+         */
+        canvasState =
+            importedObjects.map(
+                (object) => ({
+                    ...object
+                })
+            );
+
+        /*
+         * DBもキャンバス全体で置き換える
+         */
+        await syncCanvasObjectsToDB();
+
+        const historyEntry =
+            await saveEditHistory({
+                action: "IMPORT",
+                objectId: null,
+                userId,
+                userName,
+                before:
+                    beforeObjects,
+                after:
+                    importedObjects
+            });
+
+        if (historyEntry) {
+            historyList.push(
+                historyEntry
+            );
+
+            historyPointer =
+                historyList.length - 1;
+        }
+
+        /*
+         * 全ユーザーの画面を同期
+         */
+        io.emit("message", {
+            action: "INIT",
+            objects:
+                canvasState
+        });
+
+        broadcastHistory();
+
+        console.log(
+            "JSON読み込み完了:",
+            importedObjects.length,
+            "件"
+        );
+    } catch (error) {
+        /*
+         * 失敗したらメモリを元に戻す
+         */
+        canvasState =
+            beforeObjects;
+
+        console.error(
+            "IMPORT_CANVAS失敗:",
+            error
+        );
+    }
+
+    break;
+}
             case "UNDO": {
                 try {
                     isProcessing = true; // ロック開始
@@ -853,6 +1126,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
                         case "CLEAR": {
                             canvasState = targetEntry.before;
+                            break;
+                        }
+                        case "IMPORT": {
+                            canvasState =
+                            Array.isArray(
+                                targetEntry.before
+                            )
+                            ? targetEntry.before.map(
+                                (object) => ({
+                                    ...object
+                                })
+                            )
+                            : [];
                             break;
                         }
                     }
@@ -911,6 +1197,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         }
                         case "CLEAR": {
                             canvasState = [];
+                            break;
+                        }
+                        case "IMPORT": {
+                            canvasState =
+                            Array.isArray(
+                                targetEntry.after
+                            )
+                            ? targetEntry.after.map(
+                                (object) => ({
+                                    ...object
+                                })
+                            )
+                            : [];
                             break;
                         }
                     }
@@ -984,6 +1283,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                     canvasState = entry.before;
                                     break;
                                 }
+                                case "IMPORT": {
+                                    canvasState =
+                                    Array.isArray(
+                                        entry.before
+                                    )
+                                    ? entry.before.map(
+                                        (object) => ({
+                                            ...object
+                                        })
+                                    )
+                                    : [];
+                                    break;
+                                }
                             }
                         }
                     } else {
@@ -1008,6 +1320,19 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                 }
                                 case "CLEAR": {
                                     canvasState = [];
+                                    break;
+                                }
+
+                                case "IMPORT": {
+                                    canvasState =
+                                    Array.isArray(
+                                        entry.after
+                                    )
+                                    ? entry.after.map(
+                                        (object) => ({
+                                            ...object
+                                        })
+                                    ): [];
                                     break;
                                 }
                             }

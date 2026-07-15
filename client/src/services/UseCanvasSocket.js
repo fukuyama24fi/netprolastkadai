@@ -443,6 +443,34 @@ export function useCanvasSocket() {
       );
     }, []);
 
+
+    const importCanvas =
+  useCallback((objects) => {
+    if (!Array.isArray(objects)) {
+      console.warn(
+        "読み込みデータが配列ではありません",
+        objects
+      );
+
+      return;
+    }
+
+    console.log(
+      "IMPORT_CANVAS送信:",
+      {
+        objectCount:
+          objects.length,
+      }
+    );
+
+    socketService.sendMessage(
+      "IMPORT_CANVAS",
+      {
+        objects,
+      }
+    );
+  }, []);
+
   /*
    * HTML・CSS出力
    */
@@ -481,23 +509,19 @@ export function useCanvasSocket() {
     []
   );
 
-  return {
-    shapes,
-    history,
+return {
+  shapes,
+  history,
+  userName,
+  setUserName,
+  addShape,
+  updateRect,
+  deleteRect,
+  clearCanvas,
+  undo,
+  redo,
+  jumpToHistory,
 
-    userName,
-    setUserName,
-
-    addShape,
-    updateRect,
-    deleteRect,
-    clearCanvas,
-
-    undo,
-    redo,
-    jumpToHistory,
-
-    exportedFile,
-    exportCode,
-  };
+  importCanvas,
+};
 }
