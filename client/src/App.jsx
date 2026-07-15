@@ -16,6 +16,7 @@ const TYPE_LABELS = {
 };
 
 const SNAP_THRESHOLD = 6;
+const EMPTY_SMART_GUIDES = { vertical: [], horizontal: [] };
 
 const App = () => {
   const {
@@ -38,7 +39,7 @@ const App = () => {
   const [selectedId, setSelectedId] = useState(null);
   const [interaction, setInteraction] = useState(null);
 
-  const [smartGuides, clearSmartGuides] = useState({
+  const [smartGuides, setSmartGuides] = useState({
     vertical: [],
     horizontal: [],
   });
@@ -213,11 +214,6 @@ const App = () => {
       if (!selectedId) {
         return;
       }
-
-      const clearSmartGuides = useCallback(() => {
-        clearSmartGuides();
-      }, []);
-
       updateShapeLocal(
         selectedId,
         changes
@@ -1115,7 +1111,7 @@ const App = () => {
               viewShapesRef.current
             );
 
-          clearSmartGuides();
+          setSmartGuides(snapResult.guides);
 
           updateShapeLocal(interaction.id, {
             x: snapResult.x,
