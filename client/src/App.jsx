@@ -523,7 +523,6 @@ const {
   undo,
   redo,
   jumpToHistory,
-  importCanvas,
 } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -650,111 +649,118 @@ const {
     URL.revokeObjectURL(downloadUrl);
   }, [fileName, viewShapes]);
 
-  const handleOpenJsonFile =
-  useCallback(
-    async (event) => {
-      const file =
-        event.target.files?.[0];
+  const handleOpenJsonFile = useCallback(
+  async (event) => {
+    const inputElement = event.currentTarget;
+    const file = inputElement.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      console.log(
+        "JSONファイルを読み込みます:",
+        file.name
+      );
+
+      const jsonText = await file.text();
+      const parsedData = JSON.parse(jsonText);
 
       /*
-       * 同じファイルを続けて選べるように
-       * valueを空にする
+       * Pikvaの保存形式
+       * {
+       *   version: 1,
+       *   fileName: "...",
+       *   objects: [...]
+       * }
+       *
+       * または図形配列だけのJSONにも対応
        */
-      event.target.value = "";
+      const sourceObjects =
+        Array.isArray(parsedData)
+          ? parsedData
+          : parsedData?.objects;
 
-      if (!file) {
-        return;
-      }
-
-      try {
-        const jsonText =
-          await file.text();
-
-        const parsedData =
-          JSON.parse(jsonText);
-
-        /*
-         * Pikvaの保存形式と、
-         * 図形配列だけのJSONの両方に対応
-         */
-        const sourceObjects =
-          Array.isArray(parsedData)
-            ? parsedData
-            : parsedData?.objects;
-
-        if (
-          !Array.isArray(
-            sourceObjects
-          )
-        ) {
-          throw new Error(
-            "objects配列がありません"
-          );
-        }
-
-        const importedShapes =
-          normalizeImportedShapes(
-            sourceObjects
-          );
-
-        const jsonFileName =
-          !Array.isArray(
-            parsedData
-          ) &&
-          typeof parsedData.fileName ===
-            "string"
-            ? parsedData.fileName.trim()
-            : "";
-
-        const fileBaseName =
-          file.name.replace(
-            /\.json$/i,
-            ""
-          );
-
-        setFileName(
-          jsonFileName ||
-            fileBaseName ||
-            "pikva-canvas"
-        );
-
-        setSelectedId(null);
-        setEditingId(null);
-        setInteraction(null);
-
-        setSmartGuides({
-          vertical: [],
-          horizontal: [],
-        });
-
-        /*
-         * サーバーへキャンバス全体を送る
-         */
-        importCanvas(
-          importedShapes
-        );
-
-        console.log(
-          "JSON読み込み要求:",
-          {
-            fileName: file.name,
-            objectCount:
-              importedShapes.length,
-          }
-        );
-      } catch (error) {
-        console.error(
-          "JSON読み込みエラー:",
-          error
-        );
-
-        window.alert(
-          `JSONを開けませんでした。\n${error.message}`
+      if (!Array.isArray(sourceObjects)) {
+        throw new Error(
+          "JSONファイルにobjects配列がありません"
         );
       }
-    },
-    [importCanvas]
-  );
+
+      const importedShapes =
+        normalizeImportedShapes(
+          sourceObjects
+        );
+
+      /*
+       * ここが重要
+       * 読み込んだ図形を直接キャンバスへ反映する
+       */
+      setViewShapes(importedShapes);
+      viewShapesRef.current =
+        importedShapes;
+
+      setSelectedId(null);
+      setEditingId(null);
+      setDraftText("");
+      setInteraction(null);
+
+      interactionRef.current = null;
+
+      setSmartGuides({
+        vertical: [],
+        horizontal: [],
+      });
+
+      /*
+       * JSONに保存されていたファイル名を復元する
+       */
+      const savedFileName =
+        !Array.isArray(parsedData) &&
+        typeof parsedData.fileName ===
+          "string"
+          ? parsedData.fileName.trim()
+          : "";
+
+      const selectedFileName =
+        file.name.replace(
+          /\.json$/i,
+          ""
+        );
+
+      setFileName(
+        savedFileName ||
+          selectedFileName ||
+          "pikva-canvas"
+      );
+
+      console.log(
+        "JSON読み込み完了:",
+        importedShapes
+      );
+
+      window.alert(
+        `${importedShapes.length}個の図形を読み込みました`
+      );
+    } catch (error) {
+      console.error(
+        "JSON読み込みエラー:",
+        error
+      );
+
+      window.alert(
+        `JSONを開けませんでした。\n${error.message}`
+      );
+    } finally {
+      /*
+       * 同じファイルをもう一度選べるようにする
+       */
+      inputElement.value = "";
+    }
+  },
+  []
+);
 
   /*
    * サーバーを待たず、画面側だけ先に変更する。
@@ -2088,14 +2094,22 @@ const sendBackward = useCallback(() => {
         </button>
 
         
-        <button type="button" onClick={() => {
-          openFileInputRef.current?.click();
-        }}>
-          開く
-        </button>
+        <button
+  type="button"
+  onClick={() => {
+    openFileInputRef.current?.click();
+  }}
+>
+  開く
+</button>
 
-        <input ref={openFileInputRef} type="file" accept=".json,application/json" style={{display: "none",}} onChange={handleOpenJsonFile}></input>
-
+<input
+  ref={openFileInputRef}
+  type="file"
+  accept=".json,application/json"
+  onChange={handleOpenJsonFile}
+  hidden
+/>
         <button type="button" onClick={handleExportPng}>
           PNG出力
         </button>
