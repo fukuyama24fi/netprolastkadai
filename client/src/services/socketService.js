@@ -66,6 +66,7 @@ class SocketService {
   // メッセージ送信
   sendMessage(action, data = {}) {
     if (!this.socket?.connected) {
+      console.log(action, data);
       console.warn("socket未接続のため送信できません:", action, data);
       return;
     }
