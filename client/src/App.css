@@ -49,6 +49,15 @@ body {
   margin-right: 8px;
   color: #222;
   font-size: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-header-title img{
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .file-name-input {

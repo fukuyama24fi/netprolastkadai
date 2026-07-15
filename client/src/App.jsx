@@ -359,14 +359,13 @@ const App = () => {
   [selectedId, updateRect]
   );
 
-  const brengForward = useCallback(() => {
-    moveSelectedLayer("forward");
-  },[moveSelectedLayer]);
+const bringForward = useCallback(() => {
+  moveSelectedLayer("forward");
+}, [moveSelectedLayer]);
 
-  const sendBackward = useCallback(()=>{
-    moveSelectedLayer("backward");
-  },[moveSelectedLayer]);
-
+const sendBackward = useCallback(() => {
+  moveSelectedLayer("backward");
+}, [moveSelectedLayer]);
   /*
    * ドラッグ・リサイズ時の画面端スクロール。
    */
@@ -1146,7 +1145,8 @@ const App = () => {
     <div className="app">
       <header className="app-header">
         <strong className="app-header-title" >
-          <img src= "../pictuer/2aikon.png"></img>
+          <img src="/picture/2aikon.png"
+    alt="Pikva"></img>
           Pikva
         </strong>
 
