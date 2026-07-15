@@ -806,7 +806,7 @@ const App = () => {
         return;
       }
 
-      clearSmartGuides();
+      setSmartGuides(EMPTY_SMART_GUIDES);
 
       setSelectedId(shape.id);
       setEditingId(null);
@@ -1092,7 +1092,7 @@ const App = () => {
            * オートガイドを無効化する
            */
           if (event.shiftKey) {
-            clearSmartGuides();
+            setSmartGuides(EMPTY_SMART_GUIDES);
             updateShapeLocal(interaction.id, {
               x: newX,
               y: newY,
@@ -1123,7 +1123,7 @@ const App = () => {
 
         //リサイズ
         case "resize": {
-          clearSmartGuides();
+          setSmartGuides(EMPTY_SMART_GUIDES);
           const diffX =
             event.clientX -
             interaction.startX;
@@ -1156,7 +1156,7 @@ const App = () => {
 
         //回転
         case "rotate": {
-          clearSmartGuides();
+          setSmartGuides(EMPTY_SMART_GUIDES);
           const currentPointerAngle =
             Math.atan2(
               event.clientY -
@@ -1209,7 +1209,7 @@ const App = () => {
     };
 
     const handleMouseUp = () => {
-      clearSmartGuides();
+      setSmartGuides(EMPTY_SMART_GUIDES);
       if (!didMoveRef.current) {
         setInteraction(null);
         return;
