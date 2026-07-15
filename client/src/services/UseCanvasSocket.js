@@ -168,6 +168,7 @@ export function useCanvasSocket() {
         type,
         x: 300,
         y: 300,
+        rotation: 0,
       };
 
       let newShape;
@@ -203,6 +204,9 @@ export function useCanvasSocket() {
     fill: "#222222",
     text: "テキスト",
     fontSize: 24,
+    fontWeight: "normal",
+    fontStyle:"normal",
+    textTransform: "normal",
   };
 
   break;

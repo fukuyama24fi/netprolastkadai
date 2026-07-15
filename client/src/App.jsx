@@ -144,6 +144,20 @@ const App = () => {
     });
   }, []);
 
+  const updateSelectedShape = useCallback(
+    (changes)=>{
+      if(!selectedId){
+        return;
+      }
+      updateShapeLocal(selectedId,changes);
+      updateRect(selectedId,changes);
+      
+    },
+    [selectedId,updateShapeLocal,updateRect]
+  );
+
+  const isSelectedText = selectedShape?.type == "text";
+
   const autoScrollMain = useCallback((event) => { //useCallbackでメモ化
     const main = mainRef.current;
 
@@ -375,6 +389,42 @@ const App = () => {
     event.preventDefault();
   }, []);
 
+
+ const startRotate = useCallback((event, shape) => {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const shapeElement = event.currentTarget.closest(".shape");
+
+  if (!shapeElement) {
+    return;
+  }
+
+  const shapeRect = shapeElement.getBoundingClientRect();
+
+  const centerX = shapeRect.left + shapeRect.width / 2;
+  const centerY = shapeRect.top + shapeRect.height / 2;
+
+  const startPointerAngle =
+    Math.atan2(
+      event.clientY - centerY,
+      event.clientX - centerX
+    ) *
+    (180 / Math.PI);
+
+  didMoveRef.current = false;
+  setSelectedId(shape.id);
+
+  setInteraction({
+    mode: "rotate",
+    id: shape.id,
+    centerX,
+    centerY,
+    startPointerAngle,
+    startRotation: shape.rotation || 0,
+  });
+}, []);
+
   useEffect(() => {
     if (!interaction) {
       return;
@@ -392,6 +442,19 @@ const App = () => {
       autoScrollMain(event);
 
       const canvasRect = canvas.getBoundingClientRect();
+
+
+      if (interaction.mode === "drag") {
+  // 移動
+}
+
+if (interaction.mode === "resize") {
+  // サイズ変更
+}
+
+if (interaction.mode === "rotate") {
+  // 回転
+}
 
       if (interaction.mode === "drag") {
         const newX =
@@ -452,10 +515,83 @@ const App = () => {
             height: targetShape.height,
           });
         }
+
+        if(targetShape){
+          if(interaction.mode == "drag"){
+            updateRect(
+              targetShape.id,{
+                x: targetShape.x,
+                y: targetShape.y,
+              }
+            );
+          }
+
+          if(interaction.mode == "rotate"){
+            updateRect(
+              targetShape.id,{
+                rotation: targetShape.rotation || 0,
+              }
+            );
+          }
+        }
       }
 
       setInteraction(null);
     };
+
+  const handleFontSizeChange = useCallback(
+  (event) => {
+    const fontSize = Number(event.target.value);
+
+    if (!Number.isFinite(fontSize)) {
+      return;
+    }
+
+    updateSelectedShape({
+      fontSize: Math.max(8, Math.min(200, fontSize)),
+    });
+  },
+  [updateSelectedShape]
+);
+
+const toggleBold = useCallback(() => {
+  if (!isSelectedText) {
+    return;
+  }
+
+  updateSelectedShape({
+    fontWeight:
+      selectedShape.fontWeight === "bold"
+        ? "normal"
+        : "bold",
+  });
+}, [isSelectedText, selectedShape, updateSelectedShape]);
+
+const toggleItalic = useCallback(() => {
+  if (!isSelectedText) {
+    return;
+  }
+
+  updateSelectedShape({
+    fontStyle:
+      selectedShape.fontStyle === "italic"
+        ? "normal"
+        : "italic",
+  });
+}, [isSelectedText, selectedShape, updateSelectedShape]);
+
+const toggleUppercase = useCallback(() => {
+  if (!isSelectedText) {
+    return;
+  }
+
+  updateSelectedShape({
+    textTransform:
+      selectedShape.textTransform === "uppercase"
+        ? "none"
+        : "uppercase",
+  });
+}, [isSelectedText, selectedShape, updateSelectedShape]);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
@@ -566,6 +702,28 @@ const App = () => {
               テキストを追加
             </button>
           </div>
+{selectedShape ? (
+  <label className="rotation-tool">
+    回転
+    <input
+      type="range"
+      min="0"
+      max="359"
+      value={Math.round(selectedShape.rotation || 0)}
+      onChange={(event) => {
+        updateSelectedShape({
+          rotation: Number(event.target.value),
+        });
+      }}
+    />
+
+    <span>
+      {Math.round(selectedShape.rotation || 0)}°
+    </span>
+  </label>
+) : null
+
+          }
 
 
           <label className="color-tool">
@@ -625,23 +783,37 @@ const App = () => {
                     top: `${shape.y}px`,
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
+                    transform: `rotate(${shape.rotation || 0}deg)`,
+                    transformOrigin: "center center",
                   }}
                 >
                   <div
                     className="shape-body"
-                    style={{
-                      backgroundColor: isText
-                        ? "transparent"
-                        : shape.fill,
+                   style={{
+  backgroundColor: isText
+    ? "transparent"
+    : shape.fill,
 
-                      color: isText
-                        ? shape.fill
-                        : undefined,
+  color: isText
+    ? shape.fill
+    : undefined,
 
-                      fontSize: isText
-                        ? `${shape.fontSize || 24}px`
-                        : undefined,
-                    }}
+  fontSize: isText
+    ? `${shape.fontSize || 24}px`
+    : undefined,
+
+  fontWeight: isText
+    ? shape.fontWeight || "normal"
+    : undefined,
+
+  fontStyle: isText
+    ? shape.fontStyle || "normal"
+    : undefined,
+
+  textTransform: isText
+    ? shape.textTransform || "none"
+    : undefined,
+}}
                   >
                     {isText && isEditing ? (
                       <textarea
@@ -672,17 +844,85 @@ const App = () => {
                     ) : null}
                   </div>
 
-                  {!isEditing ? (
-                    <div
-                      className="resize-handle"
-                      onMouseDown={(event) => {
-                        startResize(event, shape);
-                      }}
-                    />
-                  ) : null}
+                 {!isEditing ? (
+  <>
+    <div
+      className="resize-handle"
+      onMouseDown={(event) => {
+        startResize(event, shape);
+      }}
+    />
+
+    {isSelected ? (
+      <div
+        className="rotate-handle"
+        title="ドラッグして回転"
+        onMouseDown={(event) => {
+          startRotate(event, shape);
+        }}
+      />
+    ) : null}
+  </>
+) : null}
                 </div>
               );
             })}
+
+            {isSelectedText ? (
+  <div className="text-format-tools">
+    <label>
+      文字サイズ
+      <input
+        type="number"
+        min="8"
+        max="200"
+        value={selectedShape.fontSize || 24}
+        onChange={handleFontSizeChange}
+      />
+    </label>
+
+    <div className="text-format-buttons">
+      <button
+        type="button"
+        className={
+          selectedShape.fontWeight === "bold"
+            ? "active"
+            : ""
+        }
+        onClick={toggleBold}
+        title="太字"
+      >
+        B
+      </button>
+
+      <button
+        type="button"
+        className={
+          selectedShape.fontStyle === "italic"
+            ? "active"
+            : ""
+        }
+        onClick={toggleItalic}
+        title="斜体"
+      >
+        <i>I</i>
+      </button>
+
+      <button
+        type="button"
+        className={
+          selectedShape.textTransform === "uppercase"
+            ? "active"
+            : ""
+        }
+        onClick={toggleUppercase}
+        title="大文字表示"
+      >
+        AA
+      </button>
+    </div>
+  </div>
+) : null}
           </div>
         </main>
 

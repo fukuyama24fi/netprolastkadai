@@ -271,7 +271,108 @@ body {
 
   cursor: move;
   user-select: none;
+  overflow: visible;
 }
+
+
+.rotate-handle {
+  position: absolute;
+  top: -42px;
+  left: 50%;
+
+  width: 16px;
+  height: 16px;
+
+  transform: translateX(-50%);
+
+  border: 2px solid #4d11bd;
+  border-radius: 50%;
+  background: white;
+
+  cursor: grab;
+  z-index: 20;
+
+}
+.rotate-handle:active {
+  cursor: grabbing;
+}
+
+.rotate-handle::after {
+  content: "";
+
+  position: absolute;
+  left: 50%;
+  top: 14px;
+
+  width: 2px;
+  height: 24px;
+
+  transform: translateX(-50%);
+  background: #4d11bd;
+}
+
+.rotation-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  color: white;
+  font-size: 13px;
+}
+
+.rotation-tool input {
+  width: 100%;
+}
+
+.rotation-tool span {
+  text-align: right;
+}
+
+.text-format-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  padding: 10px;
+
+  color: white;
+  background: #333;
+  border-radius: 6px;
+}
+
+.text-format-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  font-size: 13px;
+}
+
+.text-format-tools input[type="number"] {
+  width: 100%;
+  padding: 6px;
+
+  border: none;
+  border-radius: 4px;
+}
+
+.text-format-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.text-format-buttons button {
+  flex: 1;
+  min-width: 0;
+
+  padding: 7px;
+  background: #555;
+}
+
+.text-format-buttons button.active {
+  background: #4f8cff;
+}
+
 .shape-body {
   width: 100%;
   height: 100%;
@@ -340,6 +441,10 @@ body {
   font: inherit;
   line-height: 1.2;
 
+  font-weight: inherit;
+  font-style: inherit;
+  text-transform: inherit;
+  
   overflow: hidden;
   box-sizing: border-box;
 }
