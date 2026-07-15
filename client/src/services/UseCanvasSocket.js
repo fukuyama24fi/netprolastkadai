@@ -1,307 +1,178 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useState } from "react";
 import socketService from "./socketService";
 
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
+  const [userName, setUserNameState] = useState(
+    socketService.getUserName()
+  );
 
-  const [userName, setUserNameState] =
-    useState(
-      socketService.getUserName()
-    );
+  //エクスポートされたHTMLを保持するState（一番上のState定義の仲間に入れる）
+  const [exportedHtml, setExportedHtml] = useState("");
 
-  const [exportedFile, setExportedFile] =
-    useState(null);
+  // 履歴を重複させずに追加する
+  const addHistoryIfNeeded = useCallback((newHistory) => {
+    if (!newHistory) {
+      return;
+    }
 
-  /*
-   * 履歴の重複追加を防ぐ
-   */
-  const addHistoryIfNeeded =
-    useCallback((historyEntry) => {
-      if (!historyEntry) {
-        return;
+    setHistory((prev) => {
+      const exists =
+        newHistory.id &&
+        prev.some((item) => item.id === newHistory.id);
+
+      if (exists) {
+        console.log("重複履歴を無視:", newHistory.id);
+        return prev;
       }
 
-      setHistory((prev) => {
-        const alreadyExists = prev.some(
-          (item) =>
-            item.id === historyEntry.id
-        );
+      return [...prev, newHistory];
+    });
+  }, []);
 
-        if (alreadyExists) {
-          return prev;
-        }
-
-        return [
-          ...prev,
-          historyEntry,
-        ];
-      });
-    }, []);
-
-  /*
-   * Socket接続と受信
-   */
   useEffect(() => {
     socketService.connect();
 
     const handleMessage = (data) => {
-      console.log(
-        "socket受信:",
-        data
-      );
+      console.log("socket受信:", data);
 
       switch (data.action) {
         case "INIT": {
-          setShapes(
-            Array.isArray(data.objects)
-              ? data.objects
-              : []
-          );
+          setShapes(data.objects || []);
 
-          if (
-            Array.isArray(data.history)
-          ) {
-            setHistory(data.history);
+          if (data.history) {
+            setHistory(data.history || []);
           }
 
           break;
         }
 
         case "HISTORY_RESPONSE": {
-          setHistory(
-            Array.isArray(data.history)
-              ? data.history
-              : []
-          );
-
+          setHistory(data.history || []);
           break;
         }
 
         case "ADD": {
-          if (!data.object?.id) {
-            console.warn(
-              "ADDデータが不正です",
-              data
-            );
-
-            break;
+          if (!data.object) {
+            return;
           }
 
           setShapes((prev) => {
-            const alreadyExists =
-              prev.some(
-                (shape) =>
-                  shape.id ===
-                  data.object.id
+            const exists = prev.some(
+              (shape) => shape.id === data.object.id
+            );
+
+            if (exists) {
+              console.log(
+                "重複ADDを無視:",
+                data.object.id
               );
 
-            if (alreadyExists) {
               return prev;
             }
 
-            return [
-              ...prev,
-              data.object,
-            ];
+            return [...prev, data.object];
           });
 
-          addHistoryIfNeeded(
-            data.history
-          );
-
+          addHistoryIfNeeded(data.history);
           break;
         }
 
         case "UPDATE": {
           const targetId =
-            data.id ||
-            data.object?.id;
+            data.id || data.object?.id;
 
           const changes =
-            data.changes ||
-            data.object ||
-            {};
+            data.changes || data.object || {};
 
           if (!targetId) {
-            break;
+            console.warn(
+              "UPDATEにidがありません:",
+              data
+            );
+
+            return;
           }
 
-          setShapes((prev) => {
-            return prev.map((shape) => {
-              if (
-                shape.id !== targetId
-              ) {
-                return shape;
-              }
-
-              return {
-                ...shape,
-                ...changes,
-              };
-            });
-          });
-
-          addHistoryIfNeeded(
-            data.history
+          setShapes((prev) =>
+            prev.map((shape) =>
+              shape.id === targetId
+                ? {
+                    ...shape,
+                    ...changes,
+                  }
+                : shape
+            )
           );
 
+          addHistoryIfNeeded(data.history);
           break;
         }
 
         case "DELETE": {
-          if (!data.id) {
-            break;
-          }
-
-          setShapes((prev) => {
-            return prev.filter(
-              (shape) =>
-                shape.id !== data.id
-            );
-          });
-
-          addHistoryIfNeeded(
-            data.history
+          setShapes((prev) =>
+            prev.filter(
+              (shape) => shape.id !== data.id
+            )
           );
 
+          addHistoryIfNeeded(data.history);
           break;
         }
 
         case "CLEAR": {
           setShapes([]);
-
-          addHistoryIfNeeded(
-            data.history
-          );
-
+          addHistoryIfNeeded(data.history);
           break;
         }
 
         case "EXPORT_RESULT": {
-          if (!data.file) {
-            console.warn(
-              "出力データがありません",
-              data
-            );
-
-            break;
-          }
-
-          /*
-           * 同じ内容を連続出力しても
-           * Reactが更新を認識するようにする
-           */
-          setExportedFile({
-            ...data.file,
-            receivedAt: Date.now(),
-          });
-
+          setExportedHtml(data.html);
           break;
         }
 
-        default: {
+        default:
           console.log(
-            "未処理のaction:",
+            "不明なアクション:",
             data.action
           );
-        }
       }
     };
 
-    socketService.onMessage(
-      handleMessage
-    );
+    socketService.onMessage(handleMessage);
 
     return () => {
-      socketService.offMessage(
-        handleMessage
-      );
+      socketService.offMessage(handleMessage);
     };
   }, [addHistoryIfNeeded]);
 
-  /*
-   * 表示名変更
-   */
-  const setUserName = useCallback(
-    (nextName) => {
-      const trimmedName =
-        nextName.trim() ||
-        "名無しさん";
+ //エクスポートをリクエストする関数
+  const exportCode = useCallback(() => {
+    socketService.sendMessage("EXPORT", { userName });
+  }, [userName]);
 
-      socketService.setUserName(
-        trimmedName
-      );
+  const setUserName = useCallback((name) => {
+    const nextName =
+      name.trim() || "名無し";
 
-      setUserNameState(trimmedName);
+    setUserNameState(nextName);
+    socketService.setUserName(nextName);
+  }, []);
 
-      socketService.sendMessage(
-        "SET_USERNAME",
-        {
-          userName: trimmedName,
-        }
-      );
-    },
-    []
-  );
-
-  /*
-   * 図形追加
-   */
+  // 四角・円・三角・テキスト共通の追加処理
   const addShape = useCallback(
     (type) => {
-      const allowedTypes = [
-        "rect",
-        "circle",
-        "triangle",
-        "text",
-      ];
-
-      const safeType =
-        allowedTypes.includes(type)
-          ? type
-          : "rect";
-
-      const maxZIndex =
-        shapes.reduce(
-          (
-            currentMax,
-            shape,
-            index
-          ) => {
-            const zIndex = Number(
-              shape.zIndex
-            );
-
-            return Math.max(
-              currentMax,
-              Number.isFinite(zIndex)
-                ? zIndex
-                : index
-            );
-          },
-          -1
-        );
-
       const commonShape = {
         id: crypto.randomUUID(),
-        type: safeType,
-
+        type,
         x: 300,
         y: 300,
-
-        rotation: 0,
-        zIndex: maxZIndex + 1,
       };
 
       let newShape;
 
-      switch (safeType) {
+      switch (type) {
         case "circle": {
           newShape = {
             ...commonShape,
@@ -325,203 +196,125 @@ export function useCanvasSocket() {
         }
 
         case "text": {
-          newShape = {
-            ...commonShape,
-            width: 180,
-            height: 60,
+  newShape = {
+    ...commonShape,
+    width: 180,
+    height: 50,
+    fill: "#222222",
+    text: "テキスト",
+    fontSize: 24,
+  };
 
-            fill: "#222222",
-            text: "テキスト",
-
-            fontSize: 24,
-            fontWeight: "normal",
-            fontStyle: "normal",
-            textTransform: "none",
-          };
-
-          break;
-        }
+  break;
+}
 
         case "rect":
         default: {
           newShape = {
             ...commonShape,
             type: "rect",
-
             width: 100,
             height: 100,
             fill: "#4f8cff",
           };
+
+          break;
         }
       }
 
-      console.log(
-        "ADD送信:",
-        newShape
-      );
-
-      /*
-       * App側では先に追加せず、
-       * サーバーから返ったADDだけで追加する。
-       * これで二重追加を防ぐ。
-       */
-      socketService.sendMessage(
-        "ADD",
-        {
-          object: newShape,
-        }
-      );
+      socketService.sendMessage("ADD", {
+        object: newShape,
+        userName,
+      });
     },
-    [shapes]
+    [userName]
   );
 
-  /*
-   * 図形更新
-   */
+  // 既存のApp.jsxを壊さないために残す
+  const addRect = useCallback(() => {
+    addShape("rect");
+  }, [addShape]);
+
   const updateRect = useCallback(
     (id, changes) => {
-      if (!id || !changes) {
-        return;
-      }
-
-      socketService.sendMessage(
-        "UPDATE",
-        {
-          id,
-          changes,
-        }
+      // サーバー応答を待たずに画面へ反映
+      setShapes((prev) =>
+        prev.map((shape) =>
+          shape.id === id
+            ? {
+                ...shape,
+                ...changes,
+              }
+            : shape
+        )
       );
+
+      socketService.sendMessage("UPDATE", {
+        id,
+        changes,
+        userName,
+      });
     },
-    []
+    [userName]
   );
 
   const deleteRect = useCallback(
     (id) => {
-      if (!id) {
-        return;
-      }
-
-      socketService.sendMessage(
-        "DELETE",
-        {
-          id,
-        }
-      );
+      socketService.sendMessage("DELETE", {
+        id,
+        userName,
+      });
     },
-    []
+    [userName]
   );
 
-  const clearCanvas =
-    useCallback(() => {
-      socketService.sendMessage(
-        "CLEAR",
-        {}
-      );
-    }, []);
+  const clearCanvas = useCallback(() => {
+    socketService.sendMessage("CLEAR", {
+      userName,
+    });
+  }, [userName]);
 
   const undo = useCallback(() => {
-    socketService.sendMessage(
-      "UNDO",
-      {}
-    );
+    socketService.undo();
   }, []);
 
   const redo = useCallback(() => {
-    socketService.sendMessage(
-      "REDO",
-      {}
-    );
+    socketService.redo();
   }, []);
 
-  const jumpToHistory =
-    useCallback((targetId) => {
-      socketService.sendMessage(
-        "JUMP_TO_HISTORY",
-        {
-          targetId,
-        }
-      );
-    }, []);
-
-
-    const importCanvas =
-  useCallback((objects) => {
-    if (!Array.isArray(objects)) {
-      console.warn(
-        "読み込みデータが配列ではありません",
-        objects
-      );
-
-      return;
-    }
-
-    console.log(
-      "IMPORT_CANVAS送信:",
-      {
-        objectCount:
-          objects.length,
-      }
-    );
-
-    socketService.sendMessage(
-      "IMPORT_CANVAS",
-      {
-        objects,
-      }
-    );
-  }, []);
-
-  /*
-   * HTML・CSS出力
-   */
-  const exportCode = useCallback(
-    (format, fileName) => {
-      if (
-        format !== "html" &&
-        format !== "css"
-      ) {
-        console.warn(
-          "不正な出力形式:",
-          format
-        );
-
-        return;
-      }
-
+  const jumpToHistory = useCallback(
+    (historyId) => {
       console.log(
-        "EXPORT_CODE送信:",
-        {
-          format,
-          fileName,
-        }
+        "履歴ジャンプ開始:",
+        historyId
       );
 
-      socketService.sendMessage(
-        "EXPORT_CODE",
-        {
-          format,
-          fileName:
-            fileName?.trim() ||
-            "pikva-canvas",
-        }
+      socketService.jumpToHistory(
+        historyId
       );
     },
     []
   );
 
-return {
-  shapes,
-  history,
-  userName,
-  setUserName,
-  addShape,
-  updateRect,
-  deleteRect,
-  clearCanvas,
-  undo,
-  redo,
-  jumpToHistory,
+  return {
+    shapes,
+    history,
+    userName,
+    setUserName,
 
-  importCanvas,
-};
+    // 新しい共通追加関数
+    addShape,
+
+    // 既存コードとの互換用
+    addRect,
+
+    updateRect,
+    deleteRect,
+    clearCanvas,
+    undo,
+    redo,
+    jumpToHistory,
+    exportedHtml,
+    exportCode
+  };
 }
