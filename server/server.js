@@ -4,12 +4,11 @@ import http from 'http'; //HTTPサーバー機能（Socket.ioで必要）
 import cors from 'cors'; //corsは別のドメインからの勝手なアクセスをブロックする
 import pkg from 'pg'; //Neon接続用
 import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライブラリ
-import { pool } from './config/db.js'; //データベース接続用
-import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
 
 
 dotenv.config(); //.envファイルを適用
-
+import { pool } from './config/db.js'; //データベース接続用
+import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -51,8 +50,7 @@ const UPDATE_COLUMN_MAP = {
     fontSize: "font_size",
     fontWeight: "font_weight",
     fontStyle: "font_style",
-    textTransform: "text_transform",
-    zIndex: "z_index"
+    textTransform: "text_transform"
 };
 //許可する更新対象の列リスト
 const ALLOWED_UPDATE_FIELDS = Object.keys(UPDATE_COLUMN_MAP);
@@ -90,21 +88,21 @@ async function sendHistory(socket) {
                 h.before, 
                 h.after,
                 h.created_at AS "createdAt"
-             FROM edit_history h
+             FROM edit_history
              ORDER BY h.created_at DESC
              LIMIT 100`
         );
 
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-            history: result.rows.reverse()
+             history: result.rows.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
     }
 }
 
-// 履歴一覧を「今の全件」の状態で全クライアントに同期する
+// 履歴一覧を「今の全件」の状態で全クライアントに同期するヘルパー
 // pointerがどこにあるかに関係なく、historyList自体が実際に短くなっていない限り全部送る
 function broadcastHistory() {
     io.emit("message", {
@@ -163,67 +161,19 @@ async function truncateHistoryAfterPointer() {
 
 // canvasStateの内容でcanvas_objectsテーブルを丸ごと書き換える
 async function syncCanvasObjectsToDB() {
-    const client = await pool.connect();
-
-    try {
-        await client.query("BEGIN");
-
-        await client.query(
-            "DELETE FROM canvas_objects"
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM canvas_objects');
+    for (const obj of canvasState) {
+        await pool.query(
+            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [
+                obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text,
+                obj.rotation ?? 0, obj.fontSize ?? null, obj.fontWeight ?? null, obj.fontStyle ?? null, obj.textTransform ?? null
+            ]
         );
-
-        for (const obj of canvasState) {
-            await client.query(
-                `
-                INSERT INTO canvas_objects (
-                    id,
-                    type,
-                    x,
-                    y,
-                    width,
-                    height,
-                    fill,
-                    text,
-                    rotation,
-                    font_size,
-                    font_weight,
-                    font_style,
-                    text_transform,
-                    z_index
-                )
-                VALUES (
-                    $1, $2, $3, $4,
-                    $5, $6, $7, $8,
-                    $9, $10, $11, $12,
-                    $13, $14
-                )
-                `,
-                [
-                    obj.id,
-                    obj.type,
-                    obj.x,
-                    obj.y,
-                    obj.width,
-                    obj.height,
-                    obj.fill,
-                    obj.text,
-                    obj.rotation ?? 0,
-                    obj.fontSize ?? null,
-                    obj.fontWeight ?? null,
-                    obj.fontStyle ?? null,
-                    obj.textTransform ?? null,
-                    obj.zIndex ?? 0
-                ]
-            );
-        }
-
-        await client.query("COMMIT");
-    } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-    } finally {
-        client.release();
     }
+    await pool.query('COMMIT');
 }
 
 
@@ -259,16 +209,47 @@ async function startServer() {
         //ポインターを最新の状態に設定（起動時は常に最新）
         historyPointer = historyList.length - 1;
 
-        console.log(`historyList読み込み完了 (${historyList.length}件), pointer: ${historyPointer}`);
+        //履歴を最初から最後まで順に適用し、再起動時の「本当の最新状態」をシミュレートする
+        let reconstructedState = [];
+        for (const history of historyList) {
+            switch (history.action) {
+                case "ADD":
+                    // 重複回避しつつ追加
+                    if (!reconstructedState.find(obj => obj.id === history.objectId)) {
+                        reconstructedState.push(history.after);
+                    }
+                    break;
+                case "UPDATE":
+                    const uObj = reconstructedState.find(obj => obj.id === history.objectId);
+                    if (uObj) Object.assign(uObj, history.after);
+                    break;
+                case "DELETE":
+                    reconstructedState = reconstructedState.filter(obj => obj.id !== history.objectId);
+                    break;
+                case "CLEAR":
+                    reconstructedState = [];
+                    break;
+            }
+        }
+
+        // 再構築した状態を正規の canvasState に代入
+        canvasState = reconstructedState;
+
+        //再起動でポインターが末尾に戻るため、DB(canvas_objects)側もこの最新状態で強制上書き同期する
+        await syncCanvasObjectsToDB();
+
+        console.log(`初期データ再構築＆同期完了 (${canvasState.length}件), pointer: ${historyPointer}`);
 
         const PORT = process.env.PORT || 3000;
         server.listen(PORT, () => {
             console.log(`サーバーがポート ${process.env.PORT || 3000} で起動しました`);
         });
     } catch (err) {
+        await pool.query('ROLLBACK').catch(() => { });
         console.error("サーバー起動失敗:", err);
         process.exit(1);
     }
+
 
 }
 startServer(); //関数を実行
@@ -320,21 +301,21 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 try {
                     await pool.query(
                         //追加した要素がなかったらnull
-                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform, z_index)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
                         [
                             data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
-                            data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null,
-                            data.object.textTransform ?? null, data.object.zIndex ?? 0
+                            data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null, data.object.textTransform ?? null
                         ]
                     );
-
                     canvasState.push(data.object);
 
                     //新しい編集が来たら、ポインター後ろを削除
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
+                    //DBから再読み込みしてメモリとDBを同期
+                    await reloadHistoryListFromDB();
 
                     //履歴に記録
                     const historyEntry = await saveEditHistory({
@@ -346,6 +327,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         after: data.object
                     });
 
+                    //履歴に記録
                     historyList.push(historyEntry);
                     historyPointer = historyList.length - 1;
 
@@ -387,6 +369,10 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
+
+                    //DBから再読み込みしてメモリとDBを同期
+                    await reloadHistoryListFromDB();
+
 
                     // 変更前の状態を保存（undo用）
                     const beforeState = { ...obj };
@@ -437,6 +423,9 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); // 実際に切り捨てた時だけ再読み込み
                     }
+
+                    //DBから再読み込みしてメモリとDBを同期
+                    await reloadHistoryListFromDB();
 
                     // 削除前のオブジェクトを保存（undo用）
                     const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
@@ -538,7 +527,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                             canvasState = targetEntry.before;
                             break;
                         }
-
                     }
 
                     //DB(canvas_objects)へ一括反映
@@ -555,6 +543,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     });
 
                 } catch (err) {
+                    await pool.query('ROLLBACK').catch(() => { });
                     console.error("UNDO処理失敗:", err);
                 } finally {
                     isProcessing = false; // ロック解除
@@ -612,6 +601,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     });
 
                 } catch (err) {
+                    await pool.query('ROLLBACK').catch(() => { });
                     console.error("REDO処理失敗:", err);
                 } finally {
                     isProcessing = false; // ロック解除
@@ -692,7 +682,6 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                                     canvasState = [];
                                     break;
                                 }
-
                             }
                         }
                     }
@@ -722,7 +711,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "EXPORT_CODE": {
+            case "EXPORT": {
                 try {
                     // 現在のキャンバス状態からコードを生成
                     const htmlCode = generateHTMLCode(canvasState);

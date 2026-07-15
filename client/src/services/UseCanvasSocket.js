@@ -99,9 +99,9 @@ export function useCanvasSocket() {
             prev.map((shape) =>
               shape.id === targetId
                 ? {
-                    ...shape,
-                    ...changes,
-                  }
+                  ...shape,
+                  ...changes,
+                }
                 : shape
             )
           );
@@ -147,7 +147,7 @@ export function useCanvasSocket() {
     };
   }, [addHistoryIfNeeded]);
 
- //エクスポートをリクエストする関数
+  //エクスポートをリクエストする関数
   const exportCode = useCallback(() => {
     socketService.sendMessage("EXPORT", { userName });
   }, [userName]);
@@ -165,9 +165,10 @@ export function useCanvasSocket() {
     (type) => {
       const commonShape = {
         id: crypto.randomUUID(),
+        x: randomX,
+        y: randomY, // ここでランダムな値を割り当て
         type,
-        x: 300,
-        y: 300,
+        rotation: 0,
       };
 
       let newShape;
@@ -196,17 +197,21 @@ export function useCanvasSocket() {
         }
 
         case "text": {
-  newShape = {
-    ...commonShape,
-    width: 180,
-    height: 50,
-    fill: "#222222",
-    text: "テキスト",
-    fontSize: 24,
-  };
+          newShape = {
+            ...commonShape,
+            width: 180,
+            height: 60,
+            fill: "#222222",
+            text: "テキスト",
 
-  break;
-}
+            fontSize: 24,
+            fontWeight: "normal",
+            fontStyle: "normal",
+            textTransform: "none",
+          };
+
+          break;
+        }
 
         case "rect":
         default: {
@@ -242,9 +247,9 @@ export function useCanvasSocket() {
         prev.map((shape) =>
           shape.id === id
             ? {
-                ...shape,
-                ...changes,
-              }
+              ...shape,
+              ...changes,
+            }
             : shape
         )
       );
