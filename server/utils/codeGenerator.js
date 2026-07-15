@@ -9,10 +9,6 @@ function generateHTMLCode(objects) {
         if (obj.type === 'circle') {
             style += ' border-radius: 50%;';
         }
-
-        // 基本のスタイルを調整
-        let style = `position: absolute; left: ${obj.x}px; top: ${obj.y}px; width: ${obj.width}px; height: ${obj.height}px;`;
-        
         // 図形ごとのスタイル
         if (obj.type === 'circle') {
             style += ' border-radius: 50%; background-color: ' + obj.fill + ';';
