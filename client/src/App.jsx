@@ -9,12 +9,7 @@ import {
 
 import {toPng} from "html-to-image";
 
-import {
-  downloadTextFile,
-  generateCSSCode,
-  generateHTMLCode,
-  toSafeFileName,
-} from "./utils/exportCode";
+
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
@@ -27,6 +22,330 @@ const TYPE_LABELS = {
 };
 
 const SNAP_THRESHOLD = 6;
+
+/*
+ * HTML内に表示する文字を安全にする
+ */
+function escapeExportHtml(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) => {
+      const entities = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      };
+
+      return entities[character];
+    }
+  );
+}
+
+/*
+ * CSSの属性セレクター内で使う文字を安全にする
+ */
+function escapeExportCss(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\a ");
+}
+
+/*
+ * ファイル名に使えない記号を置き換える
+ */
+function sanitizeExportFileName(value) {
+  const result = String(value ?? "")
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "_");
+
+  return result || "pikva-canvas";
+}
+
+/*
+ * ブラウザから直接ファイルを保存する
+ */
+function downloadExportFile(
+  content,
+  fileName,
+  mimeType
+) {
+  if (
+    typeof content !== "string" ||
+    content.length === 0
+  ) {
+    throw new Error(
+      "出力する内容が空です"
+    );
+  }
+
+  const blob = new Blob(
+    ["\uFEFF", content],
+    {
+      type: mimeType,
+    }
+  );
+
+  const downloadUrl =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = fileName;
+  link.style.display = "none";
+
+  document.body.appendChild(link);
+
+  /*
+   * Reactのイベント内で直接クリックする
+   */
+  link.click();
+
+  /*
+   * 即座にURLを破棄すると、
+   * ブラウザによっては保存されないため遅らせる
+   */
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(
+      downloadUrl
+    );
+  }, 1500);
+}
+
+/*
+ * CSSコードを生成する
+ */
+function createExportCss(shapes = []) {
+  const objectCss = shapes.map(
+    (shape, index) => {
+      const id = escapeExportCss(
+        shape.id ||
+          `shape-${index}`
+      );
+
+      const x =
+        Number(shape.x) || 0;
+
+      const y =
+        Number(shape.y) || 0;
+
+      const width =
+        Number(shape.width) || 100;
+
+      const height =
+        Number(shape.height) || 100;
+
+      const rotation =
+        Number(shape.rotation) || 0;
+
+      const zIndex =
+        Number.isFinite(
+          Number(shape.zIndex)
+        )
+          ? Number(shape.zIndex)
+          : index;
+
+      const fill =
+        shape.fill || "#4f8cff";
+
+      const type =
+        shape.type || "rect";
+
+      const styleParts = [
+        `left: ${x}px`,
+        `top: ${y}px`,
+        `width: ${width}px`,
+        `height: ${height}px`,
+        `transform: rotate(${rotation}deg)`,
+        "transform-origin: center center",
+        `z-index: ${zIndex}`,
+      ];
+
+      if (type === "rect") {
+        styleParts.push(
+          `background-color: ${fill}`
+        );
+      }
+
+      if (type === "circle") {
+        styleParts.push(
+          `background-color: ${fill}`,
+          "border-radius: 50%"
+        );
+      }
+
+      if (type === "triangle") {
+        styleParts.push(
+          `background-color: ${fill}`,
+          "clip-path: polygon(50% 0%, 100% 100%, 0% 100%)"
+        );
+      }
+
+      if (type === "text") {
+        const fontSize =
+          Number(shape.fontSize) ||
+          24;
+
+        const fontWeight =
+          shape.fontWeight ||
+          "normal";
+
+        const fontStyle =
+          shape.fontStyle ||
+          "normal";
+
+        const textTransform =
+          shape.textTransform ||
+          "none";
+
+        styleParts.push(
+          "background-color: transparent",
+          `color: ${fill}`,
+          `font-size: ${fontSize}px`,
+          `font-weight: ${fontWeight}`,
+          `font-style: ${fontStyle}`,
+          `text-transform: ${textTransform}`,
+          "white-space: pre-wrap",
+          "overflow-wrap: anywhere",
+          "line-height: 1.2",
+          "overflow: hidden"
+        );
+      }
+
+      return `[data-pikva-id="${id}"] {
+  ${styleParts.join(";\n  ")};
+}`;
+    }
+  );
+
+  const canvasWidth = Math.max(
+    2000,
+    ...shapes.map((shape) => {
+      return (
+        (Number(shape.x) || 0) +
+        (Number(shape.width) ||
+          100) +
+        100
+      );
+    })
+  );
+
+  const canvasHeight = Math.max(
+    1400,
+    ...shapes.map((shape) => {
+      return (
+        (Number(shape.y) || 0) +
+        (Number(shape.height) ||
+          100) +
+        100
+      );
+    })
+  );
+
+  return `* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: #f0f0f0;
+  font-family: sans-serif;
+}
+
+.canvas-container {
+  position: relative;
+  width: ${canvasWidth}px;
+  height: ${canvasHeight}px;
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+.pikva-object {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+${objectCss.join("\n\n")}
+`;
+}
+
+/*
+ * HTMLコードを生成する
+ */
+function createExportHtml(
+  shapes = [],
+  cssFileName
+) {
+  const elements = shapes.map(
+    (shape, index) => {
+      const id =
+        escapeExportHtml(
+          shape.id ||
+            `shape-${index}`
+        );
+
+      const type = [
+        "rect",
+        "circle",
+        "triangle",
+        "text",
+      ].includes(shape.type)
+        ? shape.type
+        : "rect";
+
+      const text =
+        type === "text"
+          ? escapeExportHtml(
+              shape.text ||
+                "テキスト"
+            )
+          : "";
+
+      return `    <div class="pikva-object ${type}" data-pikva-id="${id}">${text}</div>`;
+    }
+  );
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Pikva Generated Code</title>
+
+  <link
+    rel="stylesheet"
+    href="./${escapeExportHtml(
+      cssFileName
+    )}"
+  >
+</head>
+
+<body>
+  <div class="canvas-container">
+${elements.join("\n")}
+  </div>
+</body>
+</html>
+`;
+}
+
+
 
 const App = () => {
 const {
@@ -236,59 +555,90 @@ const handleExportPng = useCallback(async () => {
 
 const handleExportHtml =
   useCallback(() => {
-    const safeName =
-      toSafeFileName(
-        fileName,
-        "pikva-canvas"
+    try {
+      console.log(
+        "HTML出力ボタンが押されました",
+        {
+          fileName,
+          shapeCount:
+            viewShapes.length,
+        }
       );
 
-    const htmlCode =
-      generateHTMLCode(
-        viewShapes,
-        `${safeName}.css`
-      );
+      const safeName =
+        sanitizeExportFileName(
+          fileName
+        );
 
-    downloadTextFile({
-      content: htmlCode,
-      fileName:
+      const htmlCode =
+        createExportHtml(
+          viewShapes,
+          `${safeName}.css`
+        );
+
+      downloadExportFile(
+        htmlCode,
         `${safeName}.html`,
-      mimeType:
-        "text/html;charset=utf-8",
-    });
+        "text/html;charset=utf-8"
+      );
 
-    console.log(
-      "HTML出力完了:",
-      `${safeName}.html`
-    );
+      window.alert(
+        `${safeName}.html を出力しました`
+      );
+    } catch (error) {
+      console.error(
+        "HTML出力エラー:",
+        error
+      );
+
+      window.alert(
+        `HTML出力に失敗しました\n${error.message}`
+      );
+    }
   }, [fileName, viewShapes]);
 
 const handleExportCss =
   useCallback(() => {
-    const safeName =
-      toSafeFileName(
-        fileName,
-        "pikva-canvas"
+    try {
+      console.log(
+        "CSS出力ボタンが押されました",
+        {
+          fileName,
+          shapeCount:
+            viewShapes.length,
+        }
       );
 
-    const cssCode =
-      generateCSSCode(
-        viewShapes
-      );
+      const safeName =
+        sanitizeExportFileName(
+          fileName
+        );
 
-    downloadTextFile({
-      content: cssCode,
-      fileName:
+      const cssCode =
+        createExportCss(
+          viewShapes
+        );
+
+      downloadExportFile(
+        cssCode,
         `${safeName}.css`,
-      mimeType:
-        "text/css;charset=utf-8",
-    });
+        "text/css;charset=utf-8"
+      );
 
-    console.log(
-      "CSS出力完了:",
-      `${safeName}.css`
-    );
+      window.alert(
+        `${safeName}.css を出力しました`
+      );
+    } catch (error) {
+      console.error(
+        "CSS出力エラー:",
+        error
+      );
+
+      window.alert(
+        `CSS出力に失敗しました\n${error.message}`
+      );
+    }
   }, [fileName, viewShapes]);
-
 
 
   /*
