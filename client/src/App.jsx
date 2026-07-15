@@ -15,7 +15,7 @@ const TYPE_LABELS = {
   text: "テキスト",
 };
 
-const ANAO_THRESHOLD = 6;
+const SNAP_THRESHOLD = 6;
 
 const App = () => {
   const {
@@ -38,7 +38,7 @@ const App = () => {
   const [selectedId, setSelectedId] = useState(null);
   const [interaction, setInteraction] = useState(null);
 
-  const [smartGuides,setSmartGuides] = useState({
+  const [smartGuides, clearSmartGuides] = useState({
     vertical: [],
     horizontal: [],
   });
@@ -107,9 +107,8 @@ const App = () => {
     const link = document.createElement("a");
 
     link.href = downloadUrl;
-    link.download = `${
-      fileName.trim() || "pikva-export"
-    }.html`;
+    link.download = `${fileName.trim() || "pikva-export"
+      }.html`;
 
     document.body.appendChild(link);
     link.click();
@@ -171,9 +170,8 @@ const App = () => {
       document.createElement("a");
 
     link.href = downloadUrl;
-    link.download = `${
-      fileName.trim() || "pikva-canvas"
-    }.json`;
+    link.download = `${fileName.trim() || "pikva-canvas"
+      }.json`;
 
     document.body.appendChild(link);
     link.click();
@@ -216,6 +214,10 @@ const App = () => {
         return;
       }
 
+      const clearSmartGuides = useCallback(() => {
+        clearSmartGuides();
+      }, []);
+
       updateShapeLocal(
         selectedId,
         changes
@@ -232,295 +234,295 @@ const App = () => {
       updateRect,
     ]
   );
-const calculateSmartGuides = useCallback(
-  (movingShape, allShapes) => {
-    const otherShapes = allShapes.filter((shape) => {
-      return shape.id !== movingShape.id;
-    });
+  const calculateSmartGuides = useCallback(
+    (movingShape, allShapes) => {
+      const otherShapes = allShapes.filter((shape) => {
+        return shape.id !== movingShape.id;
+      });
 
-    let snappedX = movingShape.x;
-    let snappedY = movingShape.y;
+      let snappedX = movingShape.x;
+      let snappedY = movingShape.y;
 
-    let nearestXDistance = SNAP_THRESHOLD + 1;
-    let nearestYDistance = SNAP_THRESHOLD + 1;
+      let nearestXDistance = SNAP_THRESHOLD + 1;
+      let nearestYDistance = SNAP_THRESHOLD + 1;
 
-    let verticalGuide = null;
-    let horizontalGuide = null;
+      let verticalGuide = null;
+      let horizontalGuide = null;
 
-    /*
-     * 移動中図形の
-     * 左端・中央・右端
-     */
-    const movingXPoints = [
-      {
-        value: movingShape.x,
-        offset: 0,
-      },
-      {
-        value:
-          movingShape.x +
-          movingShape.width / 2,
-        offset: movingShape.width / 2,
-      },
-      {
-        value:
-          movingShape.x +
-          movingShape.width,
-        offset: movingShape.width,
-      },
-    ];
+      /*
+       * 移動中図形の
+       * 左端・中央・右端
+       */
+      const movingXPoints = [
+        {
+          value: movingShape.x,
+          offset: 0,
+        },
+        {
+          value:
+            movingShape.x +
+            movingShape.width / 2,
+          offset: movingShape.width / 2,
+        },
+        {
+          value:
+            movingShape.x +
+            movingShape.width,
+          offset: movingShape.width,
+        },
+      ];
 
-    /*
-     * 移動中図形の
-     * 上端・中央・下端
-     */
-    const movingYPoints = [
-      {
-        value: movingShape.y,
-        offset: 0,
-      },
-      {
-        value:
-          movingShape.y +
-          movingShape.height / 2,
-        offset: movingShape.height / 2,
-      },
-      {
-        value:
-          movingShape.y +
-          movingShape.height,
-        offset: movingShape.height,
-      },
-    ];
+      /*
+       * 移動中図形の
+       * 上端・中央・下端
+       */
+      const movingYPoints = [
+        {
+          value: movingShape.y,
+          offset: 0,
+        },
+        {
+          value:
+            movingShape.y +
+            movingShape.height / 2,
+          offset: movingShape.height / 2,
+        },
+        {
+          value:
+            movingShape.y +
+            movingShape.height,
+          offset: movingShape.height,
+        },
+      ];
 
-    otherShapes.forEach((otherShape) => {
-      const targetXPoints = [
-        otherShape.x,
-        otherShape.x +
+      otherShapes.forEach((otherShape) => {
+        const targetXPoints = [
+          otherShape.x,
+          otherShape.x +
           otherShape.width / 2,
-        otherShape.x +
+          otherShape.x +
           otherShape.width,
-      ];
+        ];
 
-      const targetYPoints = [
-        otherShape.y,
-        otherShape.y +
+        const targetYPoints = [
+          otherShape.y,
+          otherShape.y +
           otherShape.height / 2,
-        otherShape.y +
+          otherShape.y +
           otherShape.height,
-      ];
+        ];
 
-      /*
-       * 縦方向の整列を確認
-       */
-      movingXPoints.forEach((movingPoint) => {
-        targetXPoints.forEach((targetX) => {
-          const difference =
-            targetX - movingPoint.value;
+        /*
+         * 縦方向の整列を確認
+         */
+        movingXPoints.forEach((movingPoint) => {
+          targetXPoints.forEach((targetX) => {
+            const difference =
+              targetX - movingPoint.value;
 
-          const distance =
-            Math.abs(difference);
+            const distance =
+              Math.abs(difference);
 
-          if (
-            distance <= SNAP_THRESHOLD &&
-            distance < nearestXDistance
-          ) {
-            nearestXDistance = distance;
+            if (
+              distance <= SNAP_THRESHOLD &&
+              distance < nearestXDistance
+            ) {
+              nearestXDistance = distance;
 
-            snappedX =
-              targetX - movingPoint.offset;
+              snappedX =
+                targetX - movingPoint.offset;
 
-            verticalGuide = targetX;
-          }
+              verticalGuide = targetX;
+            }
+          });
+        });
+
+        /*
+         * 横方向の整列を確認
+         */
+        movingYPoints.forEach((movingPoint) => {
+          targetYPoints.forEach((targetY) => {
+            const difference =
+              targetY - movingPoint.value;
+
+            const distance =
+              Math.abs(difference);
+
+            if (
+              distance <= SNAP_THRESHOLD &&
+              distance < nearestYDistance
+            ) {
+              nearestYDistance = distance;
+
+              snappedY =
+                targetY - movingPoint.offset;
+
+              horizontalGuide = targetY;
+            }
+          });
         });
       });
 
-      /*
-       * 横方向の整列を確認
-       */
-      movingYPoints.forEach((movingPoint) => {
-        targetYPoints.forEach((targetY) => {
-          const difference =
-            targetY - movingPoint.value;
+      return {
+        x: snappedX,
+        y: snappedY,
 
-          const distance =
-            Math.abs(difference);
+        guides: {
+          vertical:
+            verticalGuide === null
+              ? []
+              : [verticalGuide],
 
-          if (
-            distance <= SNAP_THRESHOLD &&
-            distance < nearestYDistance
-          ) {
-            nearestYDistance = distance;
-
-            snappedY =
-              targetY - movingPoint.offset;
-
-            horizontalGuide = targetY;
-          }
-        });
-      });
-    });
-
-    return {
-      x: snappedX,
-      y: snappedY,
-
-      guides: {
-        vertical:
-          verticalGuide === null
-            ? []
-            : [verticalGuide],
-
-        horizontal:
-          horizontalGuide === null
-            ? []
-            : [horizontalGuide],
-      },
-    };
-  },
-  []
-);
-
-  
-  //図形の優先
- const moveSelectedLayer = useCallback(
-  (direction) => {
-    if (!selectedId) {
-      return;
-    }
-
-    const currentShapes =
-      viewShapesRef.current;
-
-    /*
-     * zIndexがまだない古い図形は、
-     * 現在の配列順を仮のzIndexとして使う
-     */
-    const orderedShapes = currentShapes
-      .map((shape, index) => {
-        const parsedZIndex =
-          Number(shape.zIndex);
-
-        return {
-          ...shape,
-
-          calculatedZIndex:
-            Number.isFinite(parsedZIndex)
-              ? parsedZIndex
-              : index,
-        };
-      })
-      .sort((shapeA, shapeB) => {
-        return (
-          shapeA.calculatedZIndex -
-          shapeB.calculatedZIndex
-        );
-      });
-
-    const currentIndex =
-      orderedShapes.findIndex(
-        (shape) =>
-          shape.id === selectedId
-      );
-
-    if (currentIndex === -1) {
-      return;
-    }
-
-    /*
-     * 前へ：配列の次
-     * 後ろへ：配列の前
-     */
-    const targetIndex =
-      direction === "forward"
-        ? currentIndex + 1
-        : currentIndex - 1;
-
-    /*
-     * すでに最前面・最背面なら何もしない
-     */
-    if (
-      targetIndex < 0 ||
-      targetIndex >=
-        orderedShapes.length
-    ) {
-      return;
-    }
-
-    const selectedShapeForLayer =
-      orderedShapes[currentIndex];
-
-    const targetShape =
-      orderedShapes[targetIndex];
-
-    /*
-     * 選択中図形と隣の図形の
-     * zIndexを交換する
-     */
-    const selectedNewZIndex =
-      targetShape.calculatedZIndex;
-
-    const targetNewZIndex =
-      selectedShapeForLayer
-        .calculatedZIndex;
-
-    const nextShapes =
-      currentShapes.map((shape) => {
-        if (
-          shape.id ===
-          selectedShapeForLayer.id
-        ) {
-          return {
-            ...shape,
-            zIndex:
-              selectedNewZIndex,
-          };
-        }
-
-        if (
-          shape.id === targetShape.id
-        ) {
-          return {
-            ...shape,
-            zIndex: targetNewZIndex,
-          };
-        }
-
-        return shape;
-      });
-
-    /*
-     * 画面側を先に更新
-     */
-    setViewShapes(nextShapes);
-    viewShapesRef.current =
-      nextShapes;
-
-    /*
-     * サーバー側も2つとも更新
-     */
-    updateRect(
-      selectedShapeForLayer.id,
-      {
-        zIndex:
-          selectedNewZIndex,
-      }
-    );
-
-    updateRect(targetShape.id, {
-      zIndex: targetNewZIndex,
-    });
-  },
-  [selectedId, updateRect]
+          horizontal:
+            horizontalGuide === null
+              ? []
+              : [horizontalGuide],
+        },
+      };
+    },
+    []
   );
 
-const bringForward = useCallback(() => {
-  moveSelectedLayer("forward");
-}, [moveSelectedLayer]);
 
-const sendBackward = useCallback(() => {
-  moveSelectedLayer("backward");
-}, [moveSelectedLayer]);
+  //図形の優先
+  const moveSelectedLayer = useCallback(
+    (direction) => {
+      if (!selectedId) {
+        return;
+      }
+
+      const currentShapes =
+        viewShapesRef.current;
+
+      /*
+       * zIndexがまだない古い図形は、
+       * 現在の配列順を仮のzIndexとして使う
+       */
+      const orderedShapes = currentShapes
+        .map((shape, index) => {
+          const parsedZIndex =
+            Number(shape.zIndex);
+
+          return {
+            ...shape,
+
+            calculatedZIndex:
+              Number.isFinite(parsedZIndex)
+                ? parsedZIndex
+                : index,
+          };
+        })
+        .sort((shapeA, shapeB) => {
+          return (
+            shapeA.calculatedZIndex -
+            shapeB.calculatedZIndex
+          );
+        });
+
+      const currentIndex =
+        orderedShapes.findIndex(
+          (shape) =>
+            shape.id === selectedId
+        );
+
+      if (currentIndex === -1) {
+        return;
+      }
+
+      /*
+       * 前へ：配列の次
+       * 後ろへ：配列の前
+       */
+      const targetIndex =
+        direction === "forward"
+          ? currentIndex + 1
+          : currentIndex - 1;
+
+      /*
+       * すでに最前面・最背面なら何もしない
+       */
+      if (
+        targetIndex < 0 ||
+        targetIndex >=
+        orderedShapes.length
+      ) {
+        return;
+      }
+
+      const selectedShapeForLayer =
+        orderedShapes[currentIndex];
+
+      const targetShape =
+        orderedShapes[targetIndex];
+
+      /*
+       * 選択中図形と隣の図形の
+       * zIndexを交換する
+       */
+      const selectedNewZIndex =
+        targetShape.calculatedZIndex;
+
+      const targetNewZIndex =
+        selectedShapeForLayer
+          .calculatedZIndex;
+
+      const nextShapes =
+        currentShapes.map((shape) => {
+          if (
+            shape.id ===
+            selectedShapeForLayer.id
+          ) {
+            return {
+              ...shape,
+              zIndex:
+                selectedNewZIndex,
+            };
+          }
+
+          if (
+            shape.id === targetShape.id
+          ) {
+            return {
+              ...shape,
+              zIndex: targetNewZIndex,
+            };
+          }
+
+          return shape;
+        });
+
+      /*
+       * 画面側を先に更新
+       */
+      setViewShapes(nextShapes);
+      viewShapesRef.current =
+        nextShapes;
+
+      /*
+       * サーバー側も2つとも更新
+       */
+      updateRect(
+        selectedShapeForLayer.id,
+        {
+          zIndex:
+            selectedNewZIndex,
+        }
+      );
+
+      updateRect(targetShape.id, {
+        zIndex: targetNewZIndex,
+      });
+    },
+    [selectedId, updateRect]
+  );
+
+  const bringForward = useCallback(() => {
+    moveSelectedLayer("forward");
+  }, [moveSelectedLayer]);
+
+  const sendBackward = useCallback(() => {
+    moveSelectedLayer("backward");
+  }, [moveSelectedLayer]);
   /*
    * ドラッグ・リサイズ時の画面端スクロール。
    */
@@ -665,9 +667,6 @@ const sendBackward = useCallback(() => {
    */
   const handleColorChange = useCallback(
     (event) => {
-      if (!selectedId) {
-        return;
-      }
 
       const fill = event.target.value;
 
@@ -811,10 +810,7 @@ const sendBackward = useCallback(() => {
         return;
       }
 
-      setSmartGuides({
-        vertical: [],
-        horizontal: [],
-      });
+      clearSmartGuides();
 
       setSelectedId(shape.id);
       setEditingId(null);
@@ -961,14 +957,12 @@ const sendBackward = useCallback(() => {
    * 太字
    */
   const toggleBold = useCallback(() => {
-    if (!isSelectedText) {
-      return;
-    }
+    if (!selectedShape) return;
 
     updateSelectedShape({
       fontWeight:
         selectedShape?.fontWeight ===
-        "bold"
+          "bold"
           ? "normal"
           : "bold",
     });
@@ -978,18 +972,15 @@ const sendBackward = useCallback(() => {
     updateSelectedShape,
   ]);
 
-  /*
-   * 斜体
-   */
+  
+  //斜体
   const toggleItalic = useCallback(() => {
-    if (!isSelectedText) {
-      return;
-    }
+    if (!selectedShape) return;
 
     updateSelectedShape({
       fontStyle:
         selectedShape?.fontStyle ===
-        "italic"
+          "italic"
           ? "normal"
           : "italic",
     });
@@ -999,20 +990,17 @@ const sendBackward = useCallback(() => {
     updateSelectedShape,
   ]);
 
-  /*
-   * 大文字表示
-   */
+  
+  //大文字表示
   const toggleUppercase =
     useCallback(() => {
-      if (!isSelectedText) {
-        return;
-      }
+      if (!selectedShape) return;
 
       updateSelectedShape({
         textTransform:
           selectedShape
             ?.textTransform ===
-          "uppercase"
+            "uppercase"
             ? "none"
             : "uppercase",
       });
@@ -1022,9 +1010,8 @@ const sendBackward = useCallback(() => {
       updateSelectedShape,
     ]);
 
-  /*
-   * 回転スライダーの値をサーバーへ確定保存する。
-   */
+  
+  //回転スライダーの値をサーバーへ確定保存する。
   const saveSelectedRotation =
     useCallback(() => {
       if (!selectedId) {
@@ -1050,9 +1037,8 @@ const sendBackward = useCallback(() => {
       });
     }, [selectedId, updateRect]);
 
-  /*
-   * 移動・リサイズ・回転中のマウス操作
-   */
+
+  //移動・リサイズ・回転中のマウス操作
   useEffect(() => {
     if (!interaction) {
       return;
@@ -1081,168 +1067,153 @@ const sendBackward = useCallback(() => {
       const canvasRect =
         canvas.getBoundingClientRect();
 
-      /*
-       * 移動
-       */
-     if (interaction.mode === "drag") {
-  const newX =
-    event.clientX -
-    canvasRect.left -
-    interaction.offsetX;
-
-  const newY =
-    event.clientY -
-    canvasRect.top -
-    interaction.offsetY;
-
-  const movingShape =
-    viewShapesRef.current.find((shape) => {
-      return shape.id === interaction.id;
-    });
-
-  if (!movingShape) {
-    return;
-  }
-
-  /*
-   * Shiftキーを押している間は
-   * オートガイドを無効化する
-   */
-  if (event.shiftKey) {
-    setSmartGuides({
-      vertical: [],
-      horizontal: [],
-    });
-
-    updateShapeLocal(interaction.id, {
-      x: newX,
-      y: newY,
-    });
-
-    return;
-  }
-
-  const snapResult =
-    calculateSmartGuides(
-      {
-        ...movingShape,
-        x: newX,
-        y: newY,
-      },
-      viewShapesRef.current
-    );
-
-  setSmartGuides(snapResult.guides);
-
-  updateShapeLocal(interaction.id, {
-    x: snapResult.x,
-    y: snapResult.y,
-  });
-}
-
-      /*
-       * リサイズ
-       */
-      if (
-        interaction.mode === "resize"
-      ) {
-        setSmartGuides({
-          vertical: [],
-          horizontal: [],
-        });
-        const diffX =
-          event.clientX -
-          interaction.startX;
-
-        const diffY =
-          event.clientY -
-          interaction.startY;
-
-        const newWidth = Math.max(
-          30,
-          interaction.startWidth +
-            diffX
-        );
-
-        const newHeight = Math.max(
-          30,
-          interaction.startHeight +
-            diffY
-        );
-
-        updateShapeLocal(
-          interaction.id,
-          {
-            width: newWidth,
-            height: newHeight,
-          }
-        );
-      }
-
-      /*
-       * 回転
-       */
-      if (
-        interaction.mode === "rotate"
-      ) {
-        setSmartGuides({
-          vertical: [],
-          horizontal: [],
-        });
-        const currentPointerAngle =
-          Math.atan2(
-            event.clientY -
-              interaction.centerY,
-
+      
+      //移動
+       
+      switch (interaction.mode) {
+        case "drag": {
+          const newX =
             event.clientX -
-              interaction.centerX
-          ) *
-          (180 / Math.PI);
+            canvasRect.left -
+            interaction.offsetX;
 
-        const angleDifference =
-          currentPointerAngle -
-          interaction.startPointerAngle;
+          const newY =
+            event.clientY -
+            canvasRect.top -
+            interaction.offsetY;
 
-        let newRotation =
-          interaction.startRotation +
-          angleDifference;
+          const movingShape =
+            viewShapesRef.current.find((shape) => {
+              return shape.id === interaction.id;
+            });
 
-        /*
-         * Shiftキーを押している間は
-         * 15度単位で回転する。
-         */
-        if (event.shiftKey) {
-          newRotation =
-            Math.round(
-              newRotation / 15
-            ) * 15;
+          if (!movingShape) {
+            return;
+          }
+
+          /*
+           * Shiftキーを押している間は
+           * オートガイドを無効化する
+           */
+          if (event.shiftKey) {
+            clearSmartGuides();
+            updateShapeLocal(interaction.id, {
+              x: newX,
+              y: newY,
+            });
+
+            return;
+          }
+
+          const snapResult =
+            calculateSmartGuides(
+              {
+                ...movingShape,
+                x: newX,
+                y: newY,
+              },
+              viewShapesRef.current
+            );
+
+          clearSmartGuides();
+
+          updateShapeLocal(interaction.id, {
+            x: snapResult.x,
+            y: snapResult.y,
+          });
+          break;
         }
 
-        /*
-         * 0〜359度に直す。
-         */
-        newRotation =
-          ((newRotation % 360) +
-            360) %
-          360;
 
-        updateShapeLocal(
-          interaction.id,
-          {
-            rotation:
+        //リサイズ
+        case "resize": {
+          clearSmartGuides();
+          const diffX =
+            event.clientX -
+            interaction.startX;
+
+          const diffY =
+            event.clientY -
+            interaction.startY;
+
+          const newWidth = Math.max(
+            30,
+            interaction.startWidth +
+            diffX
+          );
+
+          const newHeight = Math.max(
+            30,
+            interaction.startHeight +
+            diffY
+          );
+
+          updateShapeLocal(
+            interaction.id,
+            {
+              width: newWidth,
+              height: newHeight,
+            }
+          );
+          break;
+        }
+
+        //回転
+        case "rotate": {
+          clearSmartGuides();
+          const currentPointerAngle =
+            Math.atan2(
+              event.clientY -
+              interaction.centerY,
+
+              event.clientX -
+              interaction.centerX
+            ) *
+            (180 / Math.PI);
+
+          const angleDifference =
+            currentPointerAngle -
+            interaction.startPointerAngle;
+
+          let newRotation =
+            interaction.startRotation +
+            angleDifference;
+
+
+          //Shiftキーを押している間は15度単位で回転する。
+          if (event.shiftKey) {
+            newRotation =
               Math.round(
-                newRotation
-              ),
+                newRotation / 15
+              ) * 15;
           }
-        );
+
+
+          //0〜359度に直す。
+          newRotation =
+            ((newRotation % 360) +
+              360) %
+            360;
+
+          updateShapeLocal(
+            interaction.id,
+            {
+              rotation:
+                Math.round(
+                  newRotation
+                ),
+            }
+          );
+          break;
+        }
+
+        default:
+          break;
       }
     };
 
     const handleMouseUp = () => {
-      setSmartGuides({
-        vertical: [],
-        horizontal: [],
-      });
+      clearSmartGuides();
       if (!didMoveRef.current) {
         setInteraction(null);
         return;
@@ -1342,9 +1313,9 @@ const sendBackward = useCallback(() => {
 
     return historyItem.objectId
       ? historyItem.objectId.slice(
-          0,
-          8
-        )
+        0,
+        8
+      )
       : "";
   };
 
@@ -1481,7 +1452,7 @@ const sendBackward = useCallback(() => {
                 max="359"
                 value={Math.round(
                   selectedShape.rotation ||
-                    0
+                  0
                 )}
                 onChange={(event) => {
                   if (!selectedId) {
@@ -1508,36 +1479,36 @@ const sendBackward = useCallback(() => {
               <span>
                 {Math.round(
                   selectedShape.rotation ||
-                    0
+                  0
                 )}
                 °
               </span>
             </label>
           ) : null}
 
-         {selectedShape ? (
-  <div className="layer-tools">
-    <span>重なり順</span>
+          {selectedShape ? (
+            <div className="layer-tools">
+              <span>重なり順</span>
 
-    <div className="layer-buttons">
-      <button
-        type="button"
-        onClick={sendBackward}
-        title="選択中の図形を1つ後ろへ移動"
-      >
-        ↓ 後ろへ
-      </button>
+              <div className="layer-buttons">
+                <button
+                  type="button"
+                  onClick={sendBackward}
+                  title="選択中の図形を1つ後ろへ移動"
+                >
+                  ↓ 後ろへ
+                </button>
 
-      <button
-        type="button"
-        onClick={bringForward}
-        title="選択中の図形を1つ前へ移動"
-      >
-        ↑ 前へ
-      </button>
-    </div>
-  </div>
-) : null}
+                <button
+                  type="button"
+                  onClick={bringForward}
+                  title="選択中の図形を1つ前へ移動"
+                >
+                  ↑ 前へ
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <label className="color-tool">
             色
@@ -1579,7 +1550,7 @@ const sendBackward = useCallback(() => {
                   className={
                     selectedShape
                       ?.fontWeight ===
-                    "bold"
+                      "bold"
                       ? "active"
                       : ""
                   }
@@ -1594,7 +1565,7 @@ const sendBackward = useCallback(() => {
                   className={
                     selectedShape
                       ?.fontStyle ===
-                    "italic"
+                      "italic"
                       ? "active"
                       : ""
                   }
@@ -1609,7 +1580,7 @@ const sendBackward = useCallback(() => {
                   className={
                     selectedShape
                       ?.textTransform ===
-                    "uppercase"
+                      "uppercase"
                       ? "active"
                       : ""
                   }
@@ -1655,7 +1626,7 @@ const sendBackward = useCallback(() => {
               height: `${canvasHeight}px`,
             }}
 
-            
+
             onMouseDown={(event) => {
               /*
                * 図形以外のキャンバスを押したら
@@ -1671,26 +1642,26 @@ const sendBackward = useCallback(() => {
             }}
           >
             {smartGuides.vertical.map((guideX) => (
-  <div
-    key={`vertical-${guideX}`}
-    className="smart-guide smart-guide-vertical"
-    style={{
-      left: `${guideX}px`,
-    }}
-  />
-))}
+              <div
+                key={`vertical-${guideX}`}
+                className="smart-guide smart-guide-vertical"
+                style={{
+                  left: `${guideX}px`,
+                }}
+              />
+            ))}
 
-{smartGuides.horizontal.map((guideY) => (
-  <div
-    key={`horizontal-${guideY}`}
-    className="smart-guide smart-guide-horizontal"
-    style={{
-      top: `${guideY}px`,
-    }}
-  />
-))}
+            {smartGuides.horizontal.map((guideY) => (
+              <div
+                key={`horizontal-${guideY}`}
+                className="smart-guide smart-guide-horizontal"
+                style={{
+                  top: `${guideY}px`,
+                }}
+              />
+            ))}
 
-            {viewShapes.map((shape,shapeIndex) => {
+            {viewShapes.map((shape, shapeIndex) => {
               const isSelected =
                 shape.id === selectedId;
 
@@ -1743,14 +1714,13 @@ const sendBackward = useCallback(() => {
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
 
-                    transform: `rotate(${
-                      shape.rotation || 0
-                    }deg)`,
+                    transform: `rotate(${shape.rotation || 0
+                      }deg)`,
 
                     transformOrigin:
                       "center center",
 
-                      zIndex: Number.isFinite(Number(shape.zIndex))
+                    zIndex: Number.isFinite(Number(shape.zIndex))
                       ? Number(shape.zIndex)
                       : shapeIndex,
                   }}
@@ -1768,30 +1738,29 @@ const sendBackward = useCallback(() => {
                         : undefined,
 
                       fontSize: isText
-                        ? `${
-                            shape.fontSize ||
-                            24
-                          }px`
+                        ? `${shape.fontSize ||
+                        24
+                        }px`
                         : undefined,
 
                       fontWeight: isText
                         ? shape.fontWeight ||
-                          "normal"
+                        "normal"
                         : undefined,
 
                       fontStyle: isText
                         ? shape.fontStyle ||
-                          "normal"
+                        "normal"
                         : undefined,
 
                       textTransform: isText
                         ? shape.textTransform ||
-                          "none"
+                        "none"
                         : undefined,
                     }}
                   >
                     {isText &&
-                    isEditing ? (
+                      isEditing ? (
                       <textarea
                         autoFocus
                         className="text-editor"
@@ -1826,7 +1795,7 @@ const sendBackward = useCallback(() => {
                     ) : null}
 
                     {isText &&
-                    !isEditing ? (
+                      !isEditing ? (
                       <span className="text-value">
                         {shape.text ||
                           "テキスト"}
@@ -1863,34 +1832,34 @@ const sendBackward = useCallback(() => {
                         />
                       ) : null}
                       {isSelected && !isEditing ? (
-  <div
-    className="shape-measurement"
-    style={{
-      transform: `
+                        <div
+                          className="shape-measurement"
+                          style={{
+                            transform: `
         translateX(-50%)
         rotate(${-(shape.rotation || 0)}deg)
       `,
-    }}
-  >
-    <span>
-      X {Math.round(shape.x)}
-    </span>
+                          }}
+                        >
+                          <span>
+                            X {Math.round(shape.x)}
+                          </span>
 
-    <span>
-      Y {Math.round(shape.y)}
-    </span>
+                          <span>
+                            Y {Math.round(shape.y)}
+                          </span>
 
-    <span>
-      W {Math.round(shape.width)}
-    </span>
+                          <span>
+                            W {Math.round(shape.width)}
+                          </span>
 
-    <span>
-      H {Math.round(shape.height)}
-    </span>
+                          <span>
+                            H {Math.round(shape.height)}
+                          </span>
 
-    <strong>px</strong>
-  </div>
-) : null}
+                          <strong>px</strong>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -1921,10 +1890,8 @@ const sendBackward = useCallback(() => {
                 <li
                   key={
                     historyItem.id ||
-                    `${
-                      historyItem.createdAt
-                    }-${
-                      historyItem.action
+                    `${historyItem.createdAt
+                    }-${historyItem.action
                     }`
                   }
                   onClick={() => {
@@ -1949,8 +1916,8 @@ const sendBackward = useCallback(() => {
                 >
                   {historyItem.createdAt
                     ? new Date(
-                        historyItem.createdAt
-                      ).toLocaleTimeString()
+                      historyItem.createdAt
+                    ).toLocaleTimeString()
                     : "--:--:--"}
 
                   {" - "}
