@@ -130,9 +130,23 @@ export function useCanvasSocket() {
           addHistoryIfNeeded(data.history);
           break;
         }
+case "EXPORT_RESULT": {
+  console.log(
+    "出力ファイルを受信:",
+    data.file
+  );
 
-      case "EXPORT_RESULT": {
-  setExportedFile(data.file || null);
+  if (!data.file) {
+    return;
+  }
+
+  setExportedFile({
+    ...data.file,
+
+    // 同じ内容を連続出力しても更新されるようにする
+    receivedAt: Date.now(),
+  });
+
   break;
 }
 
@@ -158,15 +172,26 @@ export function useCanvasSocket() {
       format !== "html" &&
       format !== "css"
     ) {
+      console.warn(
+        "未対応の出力形式:",
+        format
+      );
+
       return;
     }
+
+    console.log("出力を要求:", {
+      format,
+      fileName,
+    });
 
     socketService.sendMessage(
       "EXPORT_CODE",
       {
         format,
         fileName:
-          fileName || "pikva-canvas",
+          fileName?.trim() ||
+          "pikva-canvas",
       }
     );
   },
@@ -322,25 +347,22 @@ export function useCanvasSocket() {
     []
   );
 
-  return {
-    shapes,
-    history,
-    userName,
-    setUserName,
+ return {
+  shapes,
+  history,
+  userName,
+  setUserName,
 
-    // 新しい共通追加関数
-    addShape,
+  addShape,
+  updateRect,
+  deleteRect,
+  clearCanvas,
 
-    // 既存コードとの互換用
-    addRect,
+  undo,
+  redo,
+  jumpToHistory,
 
-    updateRect,
-    deleteRect,
-    clearCanvas,
-    undo,
-    redo,
-    jumpToHistory,
-    exportedHtml,
-    exportCode
-  };
+  exportedFile,
+  exportCode,
+};
 }

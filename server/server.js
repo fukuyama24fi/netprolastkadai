@@ -715,7 +715,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "EXPORT_CODE": {
+            case "EXPORT": {
   const format = data.format;
 
   const baseName = toSafeFileName(

@@ -20,21 +20,21 @@ const TYPE_LABELS = {
 const SNAP_THRESHOLD = 6;
 
 const App = () => {
-  const {
-    shapes,
-    history,
-    userName,
-    setUserName,
-    addShape,
-    updateRect,
-    deleteRect,
-    clearCanvas,
-    undo,
-    redo,
-    jumpToHistory,
-    exportedFile,
-    exportCode,
-  } = useCanvasSocket();
+const {
+  shapes,
+  history,
+  userName,
+  setUserName,
+  addShape,
+  updateRect,
+  deleteRect,
+  clearCanvas,
+  undo,
+  redo,
+  jumpToHistory,
+  exportedFile,
+  exportCode,
+} = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
