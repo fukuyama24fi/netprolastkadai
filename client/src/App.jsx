@@ -1145,7 +1145,7 @@ const sendBackward = useCallback(() => {
     <div className="app">
       <header className="app-header">
         <strong className="app-header-title" >
-          <img src="/picture/2aikon.png"></img>
+          <img src="/pictuer/2aikon.png"></img>
           Pikva
         </strong>
 
