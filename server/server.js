@@ -325,7 +325,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         [
                             data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
                             data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null,
-                            data.object.textTransform ?? null, data.object.zIndex ?? null
+                            data.object.textTransform ?? null, data.object.zIndex ?? 0
                         ]
                     );
 
