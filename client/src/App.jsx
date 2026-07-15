@@ -1004,7 +1004,8 @@ const App = () => {
   return (
     <div className="app">
       <header className="app-header">
-        <strong className="app-header-title">
+        <strong className="app-header-title" >
+          <img src= "./picyer/2aikon.png"></img>
           Pikva
         </strong>
 
@@ -1059,7 +1060,7 @@ const App = () => {
 
       <div className="app-body">
         <aside className="tool">
-          <h1>Pikva</h1>
+          <h1>TOOL</h1>
 
           <div className="history-buttons">
             <button
