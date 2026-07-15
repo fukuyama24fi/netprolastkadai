@@ -9,6 +9,21 @@ function generateHTMLCode(objects) {
         if (obj.type === 'circle') {
             style += ' border-radius: 50%;';
         }
+
+        // 基本のスタイルを調整
+        let style = `position: absolute; left: ${obj.x}px; top: ${obj.y}px; width: ${obj.width}px; height: ${obj.height}px;`;
+        
+        // 図形ごとのスタイル
+        if (obj.type === 'circle') {
+            style += ' border-radius: 50%; background-color: ' + obj.fill + ';';
+        } else if (obj.type === 'triangle') {
+            style += ' clip-path: polygon(50% 0%, 100% 100%, 0% 100%); background-color: ' + obj.fill + ';';
+        } else if (obj.type === 'text') {
+            // テキストの場合、背景は透明、文字色をfillに設定
+            style += ` background-color: transparent; color: ${obj.fill}; font-size: ${obj.fontSize || 24}px;`;
+        } else {
+            style += ' background-color: ' + obj.fill + ';';
+        }
         
         // テキストがあれば中に入れる
         const innerText = obj.text ? obj.text : '';
