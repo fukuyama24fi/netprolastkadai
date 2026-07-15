@@ -321,7 +321,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                     await pool.query(
                         //追加した要素がなかったらnull
                         `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform, z_Index)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
                         [
                             data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
                             data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null,
@@ -329,7 +329,7 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                         ]
                     );
 
-                    canvasState.push(newObject);
+                    canvasState.push(data.object);
 
                     //新しい編集が来たら、ポインター後ろを削除
                     if (await truncateHistoryAfterPointer()) {
