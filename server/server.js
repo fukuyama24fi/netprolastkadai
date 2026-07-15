@@ -37,9 +37,23 @@ let canvasState = [];
 let historyList = [];        //DBのedit_historyをキャッシュした配列
 let historyPointer = -1;     //現在指している位置（配列のindex）
 
+//許可する更新対象の項目と、対応するDBカラム名
+const UPDATE_COLUMN_MAP = {
+    type: "type",
+    x: "x",
+    y: "y",
+    width: "width",
+    height: "height",
+    fill: "fill",
+    text: "text",
+    rotation: "rotation",
+    fontSize: "font_size",
+    fontWeight: "font_weight",
+    fontStyle: "font_style",
+    textTransform: "text_transform"
+};
 //許可する更新対象の列リスト
-const ALLOWED_UPDATE_FIELDS = ['type', 'x', 'y', 'width', 'height', 'fill', 'text'];
-
+const ALLOWED_UPDATE_FIELDS = Object.keys(UPDATE_COLUMN_MAP);
 //操作履歴をedit_historyテーブルに保存する関数
 //?:プレースホルダーと同じ役割（SQLインジェクション対策）
 //履歴保存関数(efore/after分離)
@@ -81,7 +95,7 @@ async function sendHistory(socket) {
 
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-            history: formattedHistory.reverse()
+             history: result.rows.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
@@ -151,8 +165,12 @@ async function syncCanvasObjectsToDB() {
     await pool.query('DELETE FROM canvas_objects');
     for (const obj of canvasState) {
         await pool.query(
-            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text]
+            `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [
+                obj.id, obj.type, obj.x, obj.y, obj.width, obj.height, obj.fill, obj.text,
+                obj.rotation ?? 0, obj.fontSize ?? null, obj.fontWeight ?? null, obj.fontStyle ?? null, obj.textTransform ?? null
+            ]
         );
     }
     await pool.query('COMMIT');
@@ -282,8 +300,13 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 //DB保存したら同期
                 try {
                     await pool.query(
-                        'INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-                        [data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text]
+                        //追加した要素がなかったらnull
+                        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                        [
+                            data.object.id, data.object.type, data.object.x, data.object.y, data.object.width, data.object.height, data.object.fill, data.object.text,
+                            data.object.rotation ?? 0, data.object.fontSize ?? null, data.object.fontWeight ?? null, data.object.fontStyle ?? null, data.object.textTransform ?? null
+                        ]
                     );
                     canvasState.push(data.object);
 
