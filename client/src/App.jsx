@@ -5,7 +5,16 @@ import {
   useState,
 } from "react";
 
+
+
 import {toPng} from "html-to-image";
+
+import {
+  downloadTextFile,
+  generateCSSCode,
+  generateHTMLCode,
+  toSafeFileName,
+} from "./utils/exportCode";
 import { useCanvasSocket } from "./services/UseCanvasSocket";
 import "./App.css";
 
@@ -32,8 +41,6 @@ const {
   undo,
   redo,
   jumpToHistory,
-  exportedFile,
-  exportCode,
 } = useCanvasSocket();
 
   const [viewShapes, setViewShapes] = useState([]);
@@ -93,51 +100,7 @@ const {
     });
   }, [history]);
 
-  /*
-   * サーバーからHTMLが返ってきたらダウンロードする。
-   */
-useEffect(() => {
-  if (!exportedFile) {
-    return;
-  }
-
-  if (
-    !exportedFile.content ||
-    !exportedFile.fileName
-  ) {
-    console.warn(
-      "出力ファイルの内容が不足しています",
-      exportedFile
-    );
-
-    return;
-  }
-
-  const blob = new Blob(
-    [exportedFile.content],
-    {
-      type:
-        exportedFile.mimeType ||
-        "text/plain;charset=utf-8",
-    }
-  );
-
-  const downloadUrl =
-    URL.createObjectURL(blob);
-
-  const link =
-    document.createElement("a");
-
-  link.href = downloadUrl;
-  link.download =
-    exportedFile.fileName;
-
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  URL.revokeObjectURL(downloadUrl);
-}, [exportedFile]);
+ 
 
   const selectedShape = viewShapes.find((shape) => {
     return shape.id === selectedId;
@@ -270,6 +233,63 @@ const handleExportPng = useCallback(async () => {
     canvas.classList.remove("is-exporting");
   }
 }, [fileName]);
+
+const handleExportHtml =
+  useCallback(() => {
+    const safeName =
+      toSafeFileName(
+        fileName,
+        "pikva-canvas"
+      );
+
+    const htmlCode =
+      generateHTMLCode(
+        viewShapes,
+        `${safeName}.css`
+      );
+
+    downloadTextFile({
+      content: htmlCode,
+      fileName:
+        `${safeName}.html`,
+      mimeType:
+        "text/html;charset=utf-8",
+    });
+
+    console.log(
+      "HTML出力完了:",
+      `${safeName}.html`
+    );
+  }, [fileName, viewShapes]);
+
+const handleExportCss =
+  useCallback(() => {
+    const safeName =
+      toSafeFileName(
+        fileName,
+        "pikva-canvas"
+      );
+
+    const cssCode =
+      generateCSSCode(
+        viewShapes
+      );
+
+    downloadTextFile({
+      content: cssCode,
+      fileName:
+        `${safeName}.css`,
+      mimeType:
+        "text/css;charset=utf-8",
+    });
+
+    console.log(
+      "CSS出力完了:",
+      `${safeName}.css`
+    );
+  }, [fileName, viewShapes]);
+
+
 
   /*
    * 選択中図形を画面とサーバーの両方で変更する。
@@ -1455,22 +1475,18 @@ const sendBackward = useCallback(() => {
         </button>
 
         <button
-          type="button"
-           onClick={() => {
-    exportCode("html", fileName);
-  }}
-        >
-          HTML出力
-        </button>
-
-       <button
   type="button"
-  onClick={() => {
-    exportCode("css", fileName);
-  }}
+  onClick={handleExportHtml}
 >
-          CSS出力
-        </button>
+  HTML出力
+</button>
+
+<button
+  type="button"
+  onClick={handleExportCss}
+>
+  CSS出力
+</button>
       </header>
 
       <div className="app-body">
