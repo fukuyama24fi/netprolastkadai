@@ -86,5 +86,5 @@ function generateCSSCode(objects) {
 ${rules.join('\n\n')}`;
 }
 
-// 他のファイルで使えるように export
+// 他のファイルで使えるようにexport
 export { generateHTMLCode, generateCSSCode };
