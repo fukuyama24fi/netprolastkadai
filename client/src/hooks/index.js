@@ -1,6 +1,6 @@
-/**
- * カスタムフックの一括エクスポート
- */
+
+//  カスタムフックの一括エクスポート
+ 
 
 export { useCanvasCalculations } from "./useCanvasCalculations";
 export { useCanvasState } from "./useCanvasState";

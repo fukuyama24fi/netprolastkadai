@@ -89,16 +89,14 @@ const App = () => {
 
   // ========== Effects ==========
 
-  /**
-   * interaction参照を最新に保つ
-   */
+  // interaction参照を最新に保つ
+   
   useEffect(() => {
     interactionRef.current = interaction;
   }, [interaction]);
 
-  /**
-   * サーバーから受け取った図形を画面へ反映
-   */
+  // サーバーから受け取った図形を画面へ反映
+   
   useEffect(() => {
     if (interactionRef.current) {
       return;
@@ -108,9 +106,8 @@ const App = () => {
     viewShapesRef.current = shapes;
   }, [shapes]);
 
-  /**
-   * 履歴が更新されたら一番下まで移動
-   */
+  // 履歴が更新されたら一番下まで移動
+   
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -140,9 +137,8 @@ const App = () => {
     URL.revokeObjectURL(downloadUrl);
   }, [exportedHtml, fileName]);
 
-  /**
-   * Delete・Backspaceキーで削除
-   */
+  // Delete・Backspaceキーで削除
+   
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (
@@ -173,9 +169,8 @@ const App = () => {
     };
   }, [selectedId]);
 
-  /**
-   * 移動・リサイズ・回転中のマウス操作
-   */
+  // 移動・リサイズ・回転中のマウス操作
+   
   useEffect(() => {
     if (!interaction) {
       return;
@@ -268,11 +263,10 @@ const App = () => {
   const isSelectedText = selectedShape?.type === "text";
   const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
 
-  // ========== 内部ハンドラ関数 ==========
+  // ========== 内部関数 ==========
 
-  /**
-   * ドラッグ移動の処理
-   */
+  // ドラッグ移動の処理
+   
   const handleDragMove = useCallback(
     (event, canvasRect) => {
       const newX = event.clientX - canvasRect.left - interaction.offsetX;
@@ -303,9 +297,8 @@ const App = () => {
     [interaction, calculateSmartGuides, updateShapeLocal]
   );
 
-  /**
-   * リサイズ移動の処理
-   */
+  // リサイズ移動の処理
+   
   const handleResizeMove = useCallback((event) => {
     setSmartGuides(EMPTY_SMART_GUIDES);
     const diffX = event.clientX - interaction.startX;
@@ -329,9 +322,8 @@ const App = () => {
     );
   }, [interaction, updateShapeLocal]);
 
-  /**
-   * 回転移動の処理
-   */
+  // 回転移動の処理
+   
   const handleRotateMove = useCallback((event) => {
     setSmartGuides(EMPTY_SMART_GUIDES);
     const currentPointerAngle =
@@ -361,9 +353,8 @@ const App = () => {
     );
   }, [interaction, updateShapeLocal]);
 
-  /**
-   * ドラッグ・リサイズ時の画面端スクロール
-   */
+  // ドラッグ・リサイズ時の画面端スクロール
+   
   const autoScrollMain = useCallback((event) => {
     const main = mainRef.current;
 
@@ -390,9 +381,8 @@ const App = () => {
     }
   }, []);
 
-  /**
-   * 図形追加ハンドラ
-   */
+  // 図形追加
+   
   const handleAddShape = useCallback(
     (type) => {
       addShape(type);
@@ -400,17 +390,15 @@ const App = () => {
     [addShape]
   );
 
-  /**
-   * キャンバスクリアハンドラ
-   */
+  // キャンバスクリア
+   
   const handleClearCanvas = useCallback(() => {
     clearCanvas();
     clearSelectionState({ setSelectedId, setEditingId, setInteraction });
   }, [clearCanvas, clearSelectionState]);
 
-  /**
-   * 選択中図形削除ハンドラ
-   */
+  // 選択中図形削除
+   
   const handleDeleteSelected = useCallback(() => {
     if (!selectedId) {
       return;
@@ -428,9 +416,8 @@ const App = () => {
     deleteRect(targetId);
   }, [selectedId, deleteRect, clearSelectionState]);
 
-  /**
-   * 色変更ハンドラ
-   */
+  // 色変更
+   
   const handleColorChange = useCallback(
     (event) => {
       const fill = event.target.value;
@@ -443,9 +430,8 @@ const App = () => {
     [selectedId, updateShapeLocal, updateRect]
   );
 
-  /**
-   * テキスト編集終了・保存
-   */
+  // テキスト編集終了・保存
+   
   const finishTextEditing = useCallback(
     (shapeId) => {
       if (cancelTextEditRef.current) {
@@ -461,9 +447,8 @@ const App = () => {
     [draftText, updateShapeLocal, updateRect]
   );
 
-  /**
-   * テキスト編集中のキーハンドラ
-   */
+  // テキスト編集中のキー
+   
   const handleTextKeyDown = useCallback((event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -478,25 +463,22 @@ const App = () => {
     }
   }, []);
 
-  /**
-   * Undo ハンドラ
-   */
+  // Undo
+   
   const handleUndo = useCallback(() => {
     clearSelectionState({ setSelectedId, setEditingId, setInteraction });
     undo();
   }, [undo, clearSelectionState]);
 
-  /**
-   * Redo ハンドラ
-   */
+  // Redo 
+   
   const handleRedo = useCallback(() => {
     clearSelectionState({ setSelectedId, setEditingId, setInteraction });
     redo();
   }, [redo, clearSelectionState]);
 
-  /**
-   * 履歴ジャンプハンドラ
-   */
+  // 履歴ジャンプ
+   
   const handleHistoryClick = useCallback(
     (historyItem) => {
       if (interaction) {
@@ -510,9 +492,8 @@ const App = () => {
     [interaction, jumpToHistory, clearSelectionState]
   );
 
-  /**
-   * 文字サイズ変更ハンドラ
-   */
+  // 文字サイズ変更
+   
   const handleFontSizeChange = useCallback(
     (event) => {
       const fontSize = Number(event.target.value);
@@ -532,9 +513,8 @@ const App = () => {
     [selectedId, updateShapeLocal, updateRect]
   );
 
-  /**
-   * 太字トグル
-   */
+  // 太字
+   
   const toggleBold = useCallback(() => {
     if (!selectedShape) return;
 
@@ -547,9 +527,8 @@ const App = () => {
     updateRect(selectedId, { fontWeight: newWeight });
   }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
 
-  /**
-   * 斜体トグル
-   */
+  // 斜体
+   
   const toggleItalic = useCallback(() => {
     if (!selectedShape) return;
 
@@ -562,9 +541,8 @@ const App = () => {
     updateRect(selectedId, { fontStyle: newStyle });
   }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
 
-  /**
-   * 大文字表示トグル
-   */
+  // 大文字表示
+   
   const toggleUppercase = useCallback(() => {
     if (!selectedShape) return;
 
@@ -578,9 +556,8 @@ const App = () => {
     updateRect(selectedId, { textTransform: newTransform });
   }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
 
-  /**
-   * 回転スライダー値をサーバーへ保存
-   */
+  // 回転値をサーバーへ保存
+   
   const saveSelectedRotation = useCallback(() => {
     if (!selectedId) {
       return;
@@ -599,9 +576,8 @@ const App = () => {
     });
   }, [selectedId, updateRect]);
 
-  /**
-   * 選択図形をサーバーとローカルで更新
-   */
+  // 選択図形をサーバーとローカルで更新
+   
   const updateSelectedShape = useCallback(
     (changes) => {
       if (!selectedId) {
@@ -613,9 +589,8 @@ const App = () => {
     [selectedId, updateShapeLocal, updateRect]
   );
 
-  /**
-   * レイヤー移動
-   */
+  // レイヤー移動
+   
   const moveSelectedLayer = useCallback(
     (direction) => {
       const result = calculateLayerReorder(
@@ -640,37 +615,32 @@ const App = () => {
     [selectedId, calculateLayerReorder, updateRect]
   );
 
-  /**
-   * レイヤーを前へ
-   */
+  // レイヤーを前へ
+   
   const bringForward = useCallback(() => {
     moveSelectedLayer("forward");
   }, [moveSelectedLayer]);
 
-  /**
-   * レイヤーを後ろへ
-   */
+  //レイヤーを後ろへ
+   
   const sendBackward = useCallback(() => {
     moveSelectedLayer("backward");
   }, [moveSelectedLayer]);
 
-  /**
-   * HTMLコード表示
-   */
+  // HTML表示
+
   const handleClickShowHtml = useCallback(() => {
     handleShowHtmlCode(viewShapes, fileName, setCodeOutput);
   }, [viewShapes, fileName, handleShowHtmlCode]);
 
-  /**
-   * CSSコード表示
-   */
+  // CSS表示
+   
   const handleClickShowCss = useCallback(() => {
     handleShowCssCode(viewShapes, setCodeOutput);
   }, [viewShapes, handleShowCssCode]);
 
-  /**
-   * コード コピー
-   */
+  // コード コピー
+   
   const handleClickCopyCode = useCallback(async () => {
     const success = await handleCopyCode(codeOutput);
     if (success) {
@@ -680,16 +650,14 @@ const App = () => {
     }
   }, [codeOutput.type, codeOutput.content, handleCopyCode]);
 
-  /**
-   * JSONファイル保存
-   */
+  // JSONファイル保存
+   
   const handleClickSaveFile = useCallback(() => {
     handleSaveJsonFile(viewShapes, fileName);
   }, [viewShapes, fileName, handleSaveJsonFile]);
 
-  /**
-   * 履歴の図形名を日本語へ変換
-   */
+  //履歴の図形名を日本語へ変換
+   
   const formatObjectLabel = useCallback((historyItem) => {
     const type =
       historyItem.after?.type || historyItem.before?.type;
@@ -703,7 +671,7 @@ const App = () => {
       : "";
   }, []);
 
-  // ========== レンダリング ==========
+  // ========== HTML ==========
 
   return (
     <div className="app">
