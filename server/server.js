@@ -95,7 +95,7 @@ async function sendHistory(socket) {
 
         socket.emit("message", {
             action: "HISTORY_RESPONSE",
-             history: result.rows.reverse()
+            history: result.rows.reverse()
         });
     } catch (err) {
         console.error("履歴の取得に失敗しました:", err);
@@ -711,17 +711,35 @@ io.on('connection', async (socket) => { // クライアントが1人接続して
                 break;
             }
 
-            case "EXPORT": {
+            case "EXPORT_CODE": {
                 try {
-                    // 現在のキャンバス状態からコードを生成
-                    const htmlCode = generateHTMLCode(canvasState);
+                    const format = data.format; // "html" または "css"
+                    const fileName = data.fileName?.trim() || "pikva-canvas";
 
-                    // リクエストをしてきた本人にだけ生成結果を返す 
+                    let content;
+                    let extension;
+
+                    if (format === "html") {
+                        content = generateHTMLCode(canvasState);
+                        extension = "html";
+                    } else if (format === "css") {
+                        content = generateCSSCode(canvasState);
+                        extension = "css";
+                    } else {
+                        console.log("不正な出力形式:", format);
+                        break;
+                    }
+
+                    // リクエストをしてきた本人にだけ生成結果を返す
                     socket.emit("message", {
                         action: "EXPORT_RESULT",
-                        html: htmlCode
+                        file: {
+                            name: `${fileName}.${extension}`,
+                            content,
+                            format,
+                        },
                     });
-                    console.log(`コード生成を実行しました (userId: ${userId})`);
+                    console.log(`コード生成を実行しました (userId: ${userId}, format: ${format})`);
                 } catch (err) {
                     console.error("コード生成失敗:", err);
                 }

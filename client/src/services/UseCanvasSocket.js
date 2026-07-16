@@ -521,7 +521,8 @@ return {
   undo,
   redo,
   jumpToHistory,
-
   importCanvas,
+  exportCode,
+  exportedFile,
 };
 }
