@@ -18,6 +18,179 @@ const TYPE_LABELS = {
 const SNAP_THRESHOLD = 6;
 const EMPTY_SMART_GUIDES = { vertical: [], horizontal: [] };
 
+
+//HTML.CSS
+function escapeGeneratedHtml(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) => {
+      const entities = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      };
+
+      return entities[character];
+    }
+  );
+}
+
+function getSafeNumber(value, fallback = 0) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+}
+
+function generateFrontendCss(shapes = []) {
+  const shapeCss = shapes.map((shape, index) => {
+    const x = getSafeNumber(shape.x);
+    const y = getSafeNumber(shape.y);
+    const width = getSafeNumber(shape.width, 100);
+    const height = getSafeNumber(shape.height, 100);
+    const rotation = getSafeNumber(shape.rotation);
+    const zIndex = Number.isFinite(Number(shape.zIndex))
+      ? Number(shape.zIndex)
+      : index;
+
+    const fill = shape.fill || "#4f8cff";
+    const type = shape.type || "rect";
+
+    const styleParts = [
+      `left: ${x}px`,
+      `top: ${y}px`,
+      `width: ${width}px`,
+      `height: ${height}px`,
+      `transform: rotate(${rotation}deg)`,
+      "transform-origin: center center",
+      `z-index: ${zIndex}`,
+    ];
+
+    if (type === "rect") {
+      styleParts.push(
+        `background-color: ${fill}`
+      );
+    }
+
+    if (type === "circle") {
+      styleParts.push(
+        `background-color: ${fill}`,
+        "border-radius: 50%"
+      );
+    }
+
+    if (type === "triangle") {
+      styleParts.push(
+        `background-color: ${fill}`,
+        "clip-path: polygon(50% 0%, 100% 100%, 0% 100%)"
+      );
+    }
+
+    if (type === "text") {
+      styleParts.push(
+        "background-color: transparent",
+        `color: ${fill}`,
+        `font-size: ${getSafeNumber(shape.fontSize, 24)}px`,
+        `font-weight: ${shape.fontWeight || "normal"}`,
+        `font-style: ${shape.fontStyle || "normal"}`,
+        `text-transform: ${shape.textTransform || "none"}`,
+        "white-space: pre-wrap",
+        "overflow-wrap: anywhere",
+        "line-height: 1.2"
+      );
+    }
+
+    return `.pikva-object-${index} {
+  ${styleParts.join(";\n  ")};
+}`;
+  });
+
+  return `* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f0f0f0;
+  font-family: sans-serif;
+}
+
+.canvas-container {
+  position: relative;
+  width: 2000px;
+  height: 1400px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.pikva-object {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+${shapeCss.join("\n\n")}
+`;
+}
+
+function generateFrontendHtml(
+  shapes = [],
+  cssFileName = "pikva-canvas.css"
+) {
+  const elements = shapes.map((shape, index) => {
+    const type = [
+      "rect",
+      "circle",
+      "triangle",
+      "text",
+    ].includes(shape.type)
+      ? shape.type
+      : "rect";
+
+    const text =
+      type === "text"
+        ? escapeGeneratedHtml(
+            shape.text || "テキスト"
+          )
+        : "";
+
+    return `    <div class="pikva-object pikva-object-${index} ${type}">${text}</div>`;
+  });
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Pikva Generated Page</title>
+
+  <link
+    rel="stylesheet"
+    href="./${escapeGeneratedHtml(cssFileName)}"
+  >
+</head>
+
+<body>
+  <div class="canvas-container">
+${elements.join("\n")}
+  </div>
+</body>
+</html>`;
+}
+
 const App = () => {
   const {
     shapes,
@@ -91,6 +264,57 @@ const App = () => {
       block: "end",
     });
   }, [history]);
+
+  const handleShowHtmlCode = useCallback(() => {
+  const safeFileName =
+    fileName.trim() || "pikva-canvas";
+
+  const htmlCode =
+    generateFrontendHtml(
+      viewShapes,
+      `${safeFileName}.css`
+    );
+
+  setCodeOutput({
+    type: "HTML",
+    content: htmlCode,
+  });
+}, [fileName, viewShapes]);
+
+const handleShowCssCode = useCallback(() => {
+  const cssCode =
+    generateFrontendCss(viewShapes);
+
+  setCodeOutput({
+    type: "CSS",
+    content: cssCode,
+  });
+}, [viewShapes]);
+
+const handleCopyCode = useCallback(async () => {
+  if (!codeOutput.content) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(
+      codeOutput.content
+    );
+
+    window.alert(
+      `${codeOutput.type}コードをコピーしました`
+    );
+  } catch (error) {
+    console.error(
+      "コピーに失敗しました:",
+      error
+    );
+
+    window.alert(
+      "コードをコピーできませんでした"
+    );
+  }
+}, [codeOutput]);
 
   /*
    * サーバーからHTMLが返ってきたらダウンロードする。
@@ -381,7 +605,7 @@ const App = () => {
 
 
   //図形の優先
-const moveSelectedLayer = useCallback(
+  const moveSelectedLayer = useCallback(
   (direction) => {
     if (!selectedId) {
       return;
@@ -1377,18 +1601,56 @@ const moveSelectedLayer = useCallback(
 
         <button
           type="button"
-          onClick={exportCode}
+          onClick={handleShowHtmlCode}
         >
           HTML出力
         </button>
 
         <button
           type="button"
-          onClick={exportCode}
+          onClick={handleShowCssCode}
         >
           CSS出力
         </button>
       </header>
+
+      {codeOutput.content ? (
+  <section className="code-output-panel">
+    <div className="code-output-header">
+      <strong>
+        {codeOutput.type}コード
+      </strong>
+
+      <div>
+        <button
+          type="button"
+          onClick={handleCopyCode}
+        >
+          コピー
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCodeOutput({
+              type: "",
+              content: "",
+            });
+          }}
+        >
+          閉じる
+        </button>
+      </div>
+    </div>
+
+    <textarea
+      className="code-output-textarea"
+      value={codeOutput.content}
+      readOnly
+      spellCheck={false}
+    />
+  </section>
+) : null}
 
       <div className="app-body">
         <aside className="tool">
