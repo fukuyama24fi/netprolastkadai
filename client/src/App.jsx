@@ -6,7 +6,16 @@ import {
 } from "react";
 
 import { useCanvasSocket } from "./services/UseCanvasSocket";
+import {
+  useCanvasCalculations,
+  useCanvasState,
+  useFileOperations,
+  useInteractionHandlers,
+} from "./hooks";
+import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator";
 import "./App.css";
+
+// ========== 定数 ==========
 
 const TYPE_LABELS = {
   rect: "四角形",
@@ -17,181 +26,20 @@ const TYPE_LABELS = {
 
 const SNAP_THRESHOLD = 6;
 const EMPTY_SMART_GUIDES = { vertical: [], horizontal: [] };
+const DEFAULT_CANVAS_WIDTH = 2000;
+const DEFAULT_CANVAS_HEIGHT = 1400;
+const CANVAS_PADDING = 400;
+const MIN_SHAPE_SIZE = 30;
+const MAX_FONT_SIZE = 200;
+const MIN_FONT_SIZE = 8;
+const ROTATION_SNAP_ANGLE = 15;
+const AUTO_SCROLL_EDGE_SIZE = 80;
+const AUTO_SCROLL_SPEED = 24;
 
-
-//HTML.CSS
-function escapeGeneratedHtml(value) {
-  return String(value ?? "").replace(
-    /[&<>"']/g,
-    (character) => {
-      const entities = {
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      };
-
-      return entities[character];
-    }
-  );
-}
-
-function getSafeNumber(value, fallback = 0) {
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : fallback;
-}
-
-function generateFrontendCss(shapes = []) {
-  const shapeCss = shapes.map((shape, index) => {
-    const x = getSafeNumber(shape.x);
-    const y = getSafeNumber(shape.y);
-    const width = getSafeNumber(shape.width, 100);
-    const height = getSafeNumber(shape.height, 100);
-    const rotation = getSafeNumber(shape.rotation);
-    const zIndex = Number.isFinite(Number(shape.zIndex))
-      ? Number(shape.zIndex)
-      : index;
-
-    const fill = shape.fill || "#4f8cff";
-    const type = shape.type || "rect";
-
-    const styleParts = [
-      `left: ${x}px`,
-      `top: ${y}px`,
-      `width: ${width}px`,
-      `height: ${height}px`,
-      `transform: rotate(${rotation}deg)`,
-      "transform-origin: center center",
-      `z-index: ${zIndex}`,
-    ];
-
-    if (type === "rect") {
-      styleParts.push(
-        `background-color: ${fill}`
-      );
-    }
-
-    if (type === "circle") {
-      styleParts.push(
-        `background-color: ${fill}`,
-        "border-radius: 50%"
-      );
-    }
-
-    if (type === "triangle") {
-      styleParts.push(
-        `background-color: ${fill}`,
-        "clip-path: polygon(50% 0%, 100% 100%, 0% 100%)"
-      );
-    }
-
-    if (type === "text") {
-      styleParts.push(
-        "background-color: transparent",
-        `color: ${fill}`,
-        `font-size: ${getSafeNumber(shape.fontSize, 24)}px`,
-        `font-weight: ${shape.fontWeight || "normal"}`,
-        `font-style: ${shape.fontStyle || "normal"}`,
-        `text-transform: ${shape.textTransform || "none"}`,
-        "white-space: pre-wrap",
-        "overflow-wrap: anywhere",
-        "line-height: 1.2"
-      );
-    }
-
-    return `.pikva-object-${index} {
-  ${styleParts.join(";\n  ")};
-}`;
-  });
-
-  return `* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-}
-
-body {
-  background: #f0f0f0;
-  font-family: sans-serif;
-}
-
-.canvas-container {
-  position: relative;
-  width: 2000px;
-  height: 1400px;
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.pikva-object {
-  position: absolute;
-  box-sizing: border-box;
-}
-
-${shapeCss.join("\n\n")}
-`;
-}
-
-function generateFrontendHtml(
-  shapes = [],
-  cssFileName = "pikva-canvas.css"
-) {
-  const elements = shapes.map((shape, index) => {
-    const type = [
-      "rect",
-      "circle",
-      "triangle",
-      "text",
-    ].includes(shape.type)
-      ? shape.type
-      : "rect";
-
-    const text =
-      type === "text"
-        ? escapeGeneratedHtml(
-            shape.text || "テキスト"
-          )
-        : "";
-
-    return `    <div class="pikva-object pikva-object-${index} ${type}">${text}</div>`;
-  });
-
-  return `<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <title>Pikva Generated Page</title>
-
-  <link
-    rel="stylesheet"
-    href="./${escapeGeneratedHtml(cssFileName)}"
-  >
-</head>
-
-<body>
-  <div class="canvas-container">
-${elements.join("\n")}
-  </div>
-</body>
-</html>`;
-}
+// ========== コンポーネント ==========
 
 const App = () => {
+  // ========== Hooks から取得 ==========
   const {
     shapes,
     history,
@@ -208,43 +56,48 @@ const App = () => {
     exportCode,
   } = useCanvasSocket();
 
+  const { calculateSmartGuides, calculateLayerReorder } =
+    useCanvasCalculations();
+  const { updateShapeLocal, getSelectedShape, calculateCanvasSize, clearSelectionState, resetTextEditingState } =
+    useCanvasState();
+  const { handleSaveJsonFile, handleShowHtmlCode, handleShowCssCode, handleCopyCode } =
+    useFileOperations();
+  const { startDrag, startResize, startRotate, startTextEditing } =
+    useInteractionHandlers();
+
+  // ========== State ==========
   const [viewShapes, setViewShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [interaction, setInteraction] = useState(null);
-
-  const [smartGuides, setSmartGuides] = useState({
-    vertical: [],
-    horizontal: [],
-  });
-
-  // テキスト編集用
+  const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES);
   const [editingId, setEditingId] = useState(null);
   const [draftText, setDraftText] = useState("");
-
-  // ファイル保存用
   const [fileName, setFileName] = useState("pikva-canvas");
+  const [codeOutput, setCodeOutput] = useState({
+    type: "",
+    content: "",
+  });
 
+  // ========== Refs ==========
   const canvasRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
-
   const viewShapesRef = useRef([]);
   const interactionRef = useRef(null);
-
   const didMoveRef = useRef(false);
   const cancelTextEditRef = useRef(false);
 
-  /*
-   * interactionの最新値をRefにも保存する。
-   * shapes更新時にドラッグ中かどうかを安全に判断するため。
+  // ========== Effects ==========
+
+  /**
+   * interaction参照を最新に保つ
    */
   useEffect(() => {
     interactionRef.current = interaction;
   }, [interaction]);
 
-  /*
-   * サーバーから受け取った図形を画面へ反映する。
-   * ドラッグ・リサイズ・回転中は操作中の表示を優先する。
+  /**
+   * サーバーから受け取った図形を画面へ反映
    */
   useEffect(() => {
     if (interactionRef.current) {
@@ -255,8 +108,8 @@ const App = () => {
     viewShapesRef.current = shapes;
   }, [shapes]);
 
-  /*
-   * 履歴が更新されたら一番下まで移動する。
+  /**
+   * 履歴が更新されたら一番下まで移動
    */
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({
@@ -265,75 +118,20 @@ const App = () => {
     });
   }, [history]);
 
-  const handleShowHtmlCode = useCallback(() => {
-  const safeFileName =
-    fileName.trim() || "pikva-canvas";
-
-  const htmlCode =
-    generateFrontendHtml(
-      viewShapes,
-      `${safeFileName}.css`
-    );
-
-  setCodeOutput({
-    type: "HTML",
-    content: htmlCode,
-  });
-}, [fileName, viewShapes]);
-
-const handleShowCssCode = useCallback(() => {
-  const cssCode =
-    generateFrontendCss(viewShapes);
-
-  setCodeOutput({
-    type: "CSS",
-    content: cssCode,
-  });
-}, [viewShapes]);
-
-const handleCopyCode = useCallback(async () => {
-  if (!codeOutput.content) {
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(
-      codeOutput.content
-    );
-
-    window.alert(
-      `${codeOutput.type}コードをコピーしました`
-    );
-  } catch (error) {
-    console.error(
-      "コピーに失敗しました:",
-      error
-    );
-
-    window.alert(
-      "コードをコピーできませんでした"
-    );
-  }
-}, [codeOutput]);
-
-  /*
-   * サーバーからHTMLが返ってきたらダウンロードする。
+  /**
+   * サーバーからHTMLが返ってきたらダウンロード
    */
   useEffect(() => {
     if (!exportedHtml) {
       return;
     }
 
-    const blob = new Blob([exportedHtml], {
-      type: "text/html",
-    });
-
+    const blob = new Blob([exportedHtml], { type: "text/html" });
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
 
     link.href = downloadUrl;
-    link.download = `${fileName.trim() || "pikva-export"
-      }.html`;
+    link.download = `${fileName.trim() || "pikva-export"}.html`;
 
     document.body.appendChild(link);
     link.click();
@@ -342,519 +140,7 @@ const handleCopyCode = useCallback(async () => {
     URL.revokeObjectURL(downloadUrl);
   }, [exportedHtml, fileName]);
 
-  const selectedShape = viewShapes.find((shape) => {
-    return shape.id === selectedId;
-  });
-
-  const isSelectedText =
-    selectedShape?.type === "text";
-
-  /*
-   * 図形が右・下へ移動したらキャンバスを広げる。
-   */
-  const canvasWidth = Math.max(
-    2000,
-    ...viewShapes.map((shape) => {
-      return shape.x + shape.width + 400;
-    })
-  );
-
-  const canvasHeight = Math.max(
-    1400,
-    ...viewShapes.map((shape) => {
-      return shape.y + shape.height + 400;
-    })
-  );
-
-  /*
-   * JSONファイル保存
-   */
-  const handleSaveFile = useCallback(() => {
-    const saveData = {
-      version: 1,
-      fileName:
-        fileName.trim() || "pikva-canvas",
-      savedAt: new Date().toISOString(),
-      objects: viewShapes,
-    };
-
-    const json = JSON.stringify(
-      saveData,
-      null,
-      2
-    );
-
-    const blob = new Blob([json], {
-      type: "application/json",
-    });
-
-    const downloadUrl =
-      URL.createObjectURL(blob);
-
-    const link =
-      document.createElement("a");
-
-    link.href = downloadUrl;
-    link.download = `${fileName.trim() || "pikva-canvas"
-      }.json`;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(downloadUrl);
-  }, [fileName, viewShapes]);
-
-  /*
-   * サーバーを待たず、画面側だけ先に変更する。
-   */
-  const updateShapeLocal = useCallback(
-    (id, changes) => {
-      setViewShapes((prev) => {
-        const next = prev.map((shape) => {
-          if (shape.id !== id) {
-            return shape;
-          }
-
-          return {
-            ...shape,
-            ...changes,
-          };
-        });
-
-        viewShapesRef.current = next;
-
-        return next;
-      });
-    },
-    []
-  );
-
-  /*
-   * 選択中図形を画面とサーバーの両方で変更する。
-   */
-  const updateSelectedShape = useCallback(
-    (changes) => {
-      if (!selectedId) {
-        return;
-      }
-      updateShapeLocal(
-        selectedId,
-        changes
-      );
-
-      updateRect(
-        selectedId,
-        changes
-      );
-    },
-    [
-      selectedId,
-      updateShapeLocal,
-      updateRect,
-    ]
-  );
-  const calculateSmartGuides = useCallback(
-    (movingShape, allShapes) => {
-      const otherShapes = allShapes.filter((shape) => {
-        return shape.id !== movingShape.id;
-      });
-
-      let snappedX = movingShape.x;
-      let snappedY = movingShape.y;
-
-      let nearestXDistance = SNAP_THRESHOLD + 1;
-      let nearestYDistance = SNAP_THRESHOLD + 1;
-
-      let verticalGuide = null;
-      let horizontalGuide = null;
-
-      /*
-       * 移動中図形の
-       * 左端・中央・右端
-       */
-      const movingXPoints = [
-        {
-          value: movingShape.x,
-          offset: 0,
-        },
-        {
-          value:
-            movingShape.x +
-            movingShape.width / 2,
-          offset: movingShape.width / 2,
-        },
-        {
-          value:
-            movingShape.x +
-            movingShape.width,
-          offset: movingShape.width,
-        },
-      ];
-
-      /*
-       * 移動中図形の
-       * 上端・中央・下端
-       */
-      const movingYPoints = [
-        {
-          value: movingShape.y,
-          offset: 0,
-        },
-        {
-          value:
-            movingShape.y +
-            movingShape.height / 2,
-          offset: movingShape.height / 2,
-        },
-        {
-          value:
-            movingShape.y +
-            movingShape.height,
-          offset: movingShape.height,
-        },
-      ];
-
-      otherShapes.forEach((otherShape) => {
-        const targetXPoints = [
-          otherShape.x,
-          otherShape.x +
-          otherShape.width / 2,
-          otherShape.x +
-          otherShape.width,
-        ];
-
-        const targetYPoints = [
-          otherShape.y,
-          otherShape.y +
-          otherShape.height / 2,
-          otherShape.y +
-          otherShape.height,
-        ];
-
-        /*
-         * 縦方向の整列を確認
-         */
-        movingXPoints.forEach((movingPoint) => {
-          targetXPoints.forEach((targetX) => {
-            const difference =
-              targetX - movingPoint.value;
-
-            const distance =
-              Math.abs(difference);
-
-            if (
-              distance <= SNAP_THRESHOLD &&
-              distance < nearestXDistance
-            ) {
-              nearestXDistance = distance;
-
-              snappedX =
-                targetX - movingPoint.offset;
-
-              verticalGuide = targetX;
-            }
-          });
-        });
-
-        /*
-         * 横方向の整列を確認
-         */
-        movingYPoints.forEach((movingPoint) => {
-          targetYPoints.forEach((targetY) => {
-            const difference =
-              targetY - movingPoint.value;
-
-            const distance =
-              Math.abs(difference);
-
-            if (
-              distance <= SNAP_THRESHOLD &&
-              distance < nearestYDistance
-            ) {
-              nearestYDistance = distance;
-
-              snappedY =
-                targetY - movingPoint.offset;
-
-              horizontalGuide = targetY;
-            }
-          });
-        });
-      });
-
-      return {
-        x: snappedX,
-        y: snappedY,
-
-        guides: {
-          vertical:
-            verticalGuide === null
-              ? []
-              : [verticalGuide],
-
-          horizontal:
-            horizontalGuide === null
-              ? []
-              : [horizontalGuide],
-        },
-      };
-    },
-    []
-  );
-
-
-  //図形の優先
-  const moveSelectedLayer = useCallback(
-  (direction) => {
-    if (!selectedId) {
-      return;
-    }
-
-    const currentShapes =
-      viewShapesRef.current;
-
-    if (currentShapes.length < 2) {
-      return;
-    }
-
-    /*
-     * zIndexが重複していても、
-     * 元の配列順を使って安定して並べる
-     */
-    const orderedShapes = currentShapes
-      .map((shape, originalIndex) => {
-        const parsedZIndex =
-          Number(shape.zIndex);
-
-        return {
-          shape,
-          originalIndex,
-          calculatedZIndex:
-            Number.isFinite(parsedZIndex)
-              ? parsedZIndex
-              : originalIndex,
-        };
-      })
-      .sort((itemA, itemB) => {
-        const zIndexDifference =
-          itemA.calculatedZIndex -
-          itemB.calculatedZIndex;
-
-        if (zIndexDifference !== 0) {
-          return zIndexDifference;
-        }
-
-        return (
-          itemA.originalIndex -
-          itemB.originalIndex
-        );
-      })
-      .map((item) => item.shape);
-
-    const selectedIndex =
-      orderedShapes.findIndex(
-        (shape) =>
-          shape.id === selectedId
-      );
-
-    if (selectedIndex === -1) {
-      return;
-    }
-
-    const targetIndex =
-      direction === "forward"
-        ? selectedIndex + 1
-        : selectedIndex - 1;
-
-    /*
-     * すでに最前面または最背面
-     */
-    if (
-      targetIndex < 0 ||
-      targetIndex >=
-        orderedShapes.length
-    ) {
-      return;
-    }
-
-    /*
-     * 選択図形と隣の図形を入れ替える
-     */
-    const reorderedShapes = [
-      ...orderedShapes,
-    ];
-
-    [
-      reorderedShapes[selectedIndex],
-      reorderedShapes[targetIndex],
-    ] = [
-      reorderedShapes[targetIndex],
-      reorderedShapes[selectedIndex],
-    ];
-
-    /*
-     * zIndexを必ず0, 1, 2...へ振り直す
-     */
-    const zIndexById = new Map();
-
-    reorderedShapes.forEach(
-      (shape, index) => {
-        zIndexById.set(
-          shape.id,
-          index
-        );
-      }
-    );
-
-    const changedShapes = [];
-
-    const nextShapes =
-      currentShapes.map((shape) => {
-        const newZIndex =
-          zIndexById.get(shape.id);
-
-        const currentZIndex =
-          Number(shape.zIndex);
-
-        if (
-          currentZIndex !==
-          newZIndex
-        ) {
-          changedShapes.push({
-            id: shape.id,
-            zIndex: newZIndex,
-          });
-        }
-
-        return {
-          ...shape,
-          zIndex: newZIndex,
-        };
-      });
-
-    /*
-     * まず画面を更新
-     */
-    setViewShapes(nextShapes);
-    viewShapesRef.current =
-      nextShapes;
-
-    /*
-     * DB・共同編集側も更新
-     */
-    changedShapes.forEach(
-      ({ id, zIndex }) => {
-        updateRect(id, {
-          zIndex,
-        });
-      }
-    );
-  },
-  [selectedId, updateRect]
-);
-
-  const bringForward = useCallback(() => {
-    moveSelectedLayer("forward");
-  }, [moveSelectedLayer]);
-
-  const sendBackward = useCallback(() => {
-    moveSelectedLayer("backward");
-  }, [moveSelectedLayer]);
-  /*
-   * ドラッグ・リサイズ時の画面端スクロール。
-   */
-  const autoScrollMain = useCallback(
-    (event) => {
-      const main = mainRef.current;
-
-      if (!main) {
-        return;
-      }
-
-      const rect =
-        main.getBoundingClientRect();
-
-      const edgeSize = 80;
-      const scrollSpeed = 24;
-
-      if (
-        event.clientX >
-        rect.right - edgeSize
-      ) {
-        main.scrollLeft += scrollSpeed;
-      }
-
-      if (
-        event.clientX <
-        rect.left + edgeSize
-      ) {
-        main.scrollLeft -= scrollSpeed;
-      }
-
-      if (
-        event.clientY >
-        rect.bottom - edgeSize
-      ) {
-        main.scrollTop += scrollSpeed;
-      }
-
-      if (
-        event.clientY <
-        rect.top + edgeSize
-      ) {
-        main.scrollTop -= scrollSpeed;
-      }
-    },
-    []
-  );
-
-  const handleAddShape = useCallback(
-    (type) => {
-      addShape(type);
-    },
-    [addShape]
-  );
-
-  const handleClearCanvas = useCallback(() => {
-    clearCanvas();
-
-    setSelectedId(null);
-    setEditingId(null);
-    setInteraction(null);
-  }, [clearCanvas]);
-
-  /*
-   * 選択中図形の削除
-   */
-  const handleDeleteSelected =
-    useCallback(() => {
-      if (!selectedId) {
-        return;
-      }
-
-      const targetId = selectedId;
-
-      setViewShapes((prev) => {
-        const next = prev.filter(
-          (shape) => {
-            return shape.id !== targetId;
-          }
-        );
-
-        viewShapesRef.current = next;
-
-        return next;
-      });
-
-      setSelectedId(null);
-      setEditingId(null);
-      setInteraction(null);
-
-      deleteRect(targetId);
-    }, [selectedId, deleteRect]);
-
-  /*
+  /**
    * Delete・Backspaceキーで削除
    */
   useEffect(() => {
@@ -866,13 +152,9 @@ const handleCopyCode = useCallback(async () => {
         return;
       }
 
-      const tagName =
-        document.activeElement?.tagName;
+      const tagName = document.activeElement?.tagName;
 
-      if (
-        tagName === "INPUT" ||
-        tagName === "TEXTAREA"
-      ) {
+      if (tagName === "INPUT" || tagName === "TEXTAREA") {
         return;
       }
 
@@ -884,407 +166,23 @@ const handleCopyCode = useCallback(async () => {
       handleDeleteSelected();
     };
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [
-    selectedId,
-    handleDeleteSelected,
-  ]);
+  }, [selectedId]);
 
-  /*
-   * 色変更
+  /**
+   * 移動・リサイズ・回転中のマウス操作
    */
-  const handleColorChange = useCallback(
-    (event) => {
-
-      const fill = event.target.value;
-
-      updateSelectedShape({
-        fill,
-      });
-    },
-    [
-      selectedId,
-      updateSelectedShape,
-    ]
-  );
-
-  /*
-   * テキスト編集開始
-   */
-  const startTextEditing = useCallback(
-    (event, shape) => {
-      event.stopPropagation();
-
-      if (shape.type !== "text") {
-        return;
-      }
-
-      cancelTextEditRef.current = false;
-
-      setSelectedId(shape.id);
-      setInteraction(null);
-      setDraftText(shape.text || "");
-      setEditingId(shape.id);
-    },
-    []
-  );
-
-  /*
-   * テキスト編集終了・保存
-   */
-  const finishTextEditing = useCallback(
-    (shapeId) => {
-      if (
-        cancelTextEditRef.current
-      ) {
-        cancelTextEditRef.current =
-          false;
-
-        setEditingId(null);
-        return;
-      }
-
-      updateShapeLocal(shapeId, {
-        text: draftText,
-      });
-
-      updateRect(shapeId, {
-        text: draftText,
-      });
-
-      setEditingId(null);
-    },
-    [
-      draftText,
-      updateShapeLocal,
-      updateRect,
-    ]
-  );
-
-  /*
-   * テキスト編集中のキー
-   *
-   * Enter: 保存
-   * Shift + Enter: 改行
-   * Escape: キャンセル
-   */
-  const handleTextKeyDown = useCallback(
-    (event) => {
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey
-      ) {
-        event.preventDefault();
-        event.currentTarget.blur();
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-
-        cancelTextEditRef.current =
-          true;
-
-        event.currentTarget.blur();
-      }
-    },
-    []
-  );
-
-  const handleUndo = useCallback(() => {
-    setSelectedId(null);
-    setEditingId(null);
-    undo();
-  }, [undo]);
-
-  const handleRedo = useCallback(() => {
-    setSelectedId(null);
-    setEditingId(null);
-    redo();
-  }, [redo]);
-
-  /*
-   * 履歴ジャンプ
-   */
-  const handleHistoryClick =
-    useCallback(
-      (historyItem) => {
-        if (interaction) {
-          console.warn(
-            "操作中は履歴ジャンプできません"
-          );
-          return;
-        }
-
-        setSelectedId(null);
-        setEditingId(null);
-
-        jumpToHistory(historyItem.id);
-      },
-      [
-        interaction,
-        jumpToHistory,
-      ]
-    );
-
-  /*
-   * 図形移動開始
-   */
-  const startDrag = useCallback(
-    (event, shape) => {
-      const canvas = canvasRef.current;
-
-      if (!canvas) {
-        return;
-      }
-
-      setSmartGuides(EMPTY_SMART_GUIDES);
-
-      setSelectedId(shape.id);
-      setEditingId(null);
-
-      didMoveRef.current = false;
-
-      const canvasRect =
-        canvas.getBoundingClientRect();
-
-      /*
-       * 回転後の図形でも移動開始時に
-       * 大きくずれないよう、shape.x/yを基準にする。
-       */
-      setInteraction({
-        mode: "drag",
-        id: shape.id,
-
-        offsetX:
-          event.clientX -
-          canvasRect.left -
-          shape.x,
-
-        offsetY:
-          event.clientY -
-          canvasRect.top -
-          shape.y,
-      });
-
-      event.preventDefault();
-    },
-    []
-  );
-
-  /*
-   * リサイズ開始
-   */
-  const startResize = useCallback(
-    (event, shape) => {
-      event.stopPropagation();
-      event.preventDefault();
-
-      setSelectedId(shape.id);
-      setEditingId(null);
-
-      didMoveRef.current = false;
-
-      setInteraction({
-        mode: "resize",
-        id: shape.id,
-
-        startX: event.clientX,
-        startY: event.clientY,
-
-        startWidth: shape.width,
-        startHeight: shape.height,
-      });
-    },
-    []
-  );
-
-  /*
-   * 回転開始
-   */
-  const startRotate = useCallback(
-    (event, shape) => {
-      event.stopPropagation();
-      event.preventDefault();
-
-      const shapeElement =
-        event.currentTarget.closest(
-          ".shape"
-        );
-
-      if (!shapeElement) {
-        return;
-      }
-
-      const shapeRect =
-        shapeElement.getBoundingClientRect();
-
-      const centerX =
-        shapeRect.left +
-        shapeRect.width / 2;
-
-      const centerY =
-        shapeRect.top +
-        shapeRect.height / 2;
-
-      const startPointerAngle =
-        Math.atan2(
-          event.clientY - centerY,
-          event.clientX - centerX
-        ) *
-        (180 / Math.PI);
-
-      didMoveRef.current = false;
-
-      setSelectedId(shape.id);
-      setEditingId(null);
-
-      setInteraction({
-        mode: "rotate",
-        id: shape.id,
-
-        centerX,
-        centerY,
-
-        startPointerAngle,
-
-        startRotation:
-          shape.rotation || 0,
-      });
-    },
-    []
-  );
-
-  /*
-   * 文字サイズ変更
-   */
-  const handleFontSizeChange =
-    useCallback(
-      (event) => {
-        const fontSize = Number(
-          event.target.value
-        );
-
-        if (
-          !Number.isFinite(fontSize)
-        ) {
-          return;
-        }
-
-        updateSelectedShape({
-          fontSize: Math.max(
-            8,
-            Math.min(200, fontSize)
-          ),
-        });
-      },
-      [updateSelectedShape]
-    );
-
-  /*
-   * 太字
-   */
-  const toggleBold = useCallback(() => {
-    if (!selectedShape) return;
-
-    updateSelectedShape({
-      fontWeight:
-        selectedShape?.fontWeight ===
-          "bold"
-          ? "normal"
-          : "bold",
-    });
-  }, [
-    isSelectedText,
-    selectedShape,
-    updateSelectedShape,
-  ]);
-
-  
-  //斜体
-  const toggleItalic = useCallback(() => {
-    if (!selectedShape) return;
-
-    updateSelectedShape({
-      fontStyle:
-        selectedShape?.fontStyle ===
-          "italic"
-          ? "normal"
-          : "italic",
-    });
-  }, [
-    isSelectedText,
-    selectedShape,
-    updateSelectedShape,
-  ]);
-
-  
-  //大文字表示
-  const toggleUppercase =
-    useCallback(() => {
-      if (!selectedShape) return;
-
-      updateSelectedShape({
-        textTransform:
-          selectedShape
-            ?.textTransform ===
-            "uppercase"
-            ? "none"
-            : "uppercase",
-      });
-    }, [
-      isSelectedText,
-      selectedShape,
-      updateSelectedShape,
-    ]);
-
-  
-  //回転スライダーの値をサーバーへ確定保存する。
-  const saveSelectedRotation =
-    useCallback(() => {
-      if (!selectedId) {
-        return;
-      }
-
-      const targetShape =
-        viewShapesRef.current.find(
-          (shape) => {
-            return (
-              shape.id === selectedId
-            );
-          }
-        );
-
-      if (!targetShape) {
-        return;
-      }
-
-      updateRect(targetShape.id, {
-        rotation:
-          targetShape.rotation || 0,
-      });
-    }, [selectedId, updateRect]);
-
-
-  //移動・リサイズ・回転中のマウス操作
   useEffect(() => {
     if (!interaction) {
       return;
     }
 
     const handleMouseMove = (event) => {
-      const canvas =
-        canvasRef.current;
+      const canvas = canvasRef.current;
 
       if (!canvas) {
         return;
@@ -1292,158 +190,24 @@ const handleCopyCode = useCallback(async () => {
 
       didMoveRef.current = true;
 
-      /*
-       * 回転中に自動スクロールすると、
-       * 回転中心がずれやすいため除外する。
-       */
-      if (
-        interaction.mode !== "rotate"
-      ) {
+      if (interaction.mode !== "rotate") {
         autoScrollMain(event);
       }
 
-      const canvasRect =
-        canvas.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
 
-      
-      //移動
-       
       switch (interaction.mode) {
-        case "drag": {
-          const newX =
-            event.clientX -
-            canvasRect.left -
-            interaction.offsetX;
-
-          const newY =
-            event.clientY -
-            canvasRect.top -
-            interaction.offsetY;
-
-          const movingShape =
-            viewShapesRef.current.find((shape) => {
-              return shape.id === interaction.id;
-            });
-
-          if (!movingShape) {
-            return;
-          }
-
-          /*
-           * Shiftキーを押している間は
-           * オートガイドを無効化する
-           */
-          if (event.shiftKey) {
-            setSmartGuides(EMPTY_SMART_GUIDES);
-            updateShapeLocal(interaction.id, {
-              x: newX,
-              y: newY,
-            });
-
-            return;
-          }
-
-          const snapResult =
-            calculateSmartGuides(
-              {
-                ...movingShape,
-                x: newX,
-                y: newY,
-              },
-              viewShapesRef.current
-            );
-
-          setSmartGuides(snapResult.guides);
-
-          updateShapeLocal(interaction.id, {
-            x: snapResult.x,
-            y: snapResult.y,
-          });
+        case "drag":
+          handleDragMove(event, canvasRect);
           break;
-        }
 
-
-        //リサイズ
-        case "resize": {
-          setSmartGuides(EMPTY_SMART_GUIDES);
-          const diffX =
-            event.clientX -
-            interaction.startX;
-
-          const diffY =
-            event.clientY -
-            interaction.startY;
-
-          const newWidth = Math.max(
-            30,
-            interaction.startWidth +
-            diffX
-          );
-
-          const newHeight = Math.max(
-            30,
-            interaction.startHeight +
-            diffY
-          );
-
-          updateShapeLocal(
-            interaction.id,
-            {
-              width: newWidth,
-              height: newHeight,
-            }
-          );
+        case "resize":
+          handleResizeMove(event);
           break;
-        }
 
-        //回転
-        case "rotate": {
-          setSmartGuides(EMPTY_SMART_GUIDES);
-          const currentPointerAngle =
-            Math.atan2(
-              event.clientY -
-              interaction.centerY,
-
-              event.clientX -
-              interaction.centerX
-            ) *
-            (180 / Math.PI);
-
-          const angleDifference =
-            currentPointerAngle -
-            interaction.startPointerAngle;
-
-          let newRotation =
-            interaction.startRotation +
-            angleDifference;
-
-
-          //Shiftキーを押している間は15度単位で回転する。
-          if (event.shiftKey) {
-            newRotation =
-              Math.round(
-                newRotation / 15
-              ) * 15;
-          }
-
-
-          //0〜359度に直す。
-          newRotation =
-            ((newRotation % 360) +
-              360) %
-            360;
-
-          updateShapeLocal(
-            interaction.id,
-            {
-              rotation:
-                Math.round(
-                  newRotation
-                ),
-            }
-          );
+        case "rotate":
+          handleRotateMove(event);
           break;
-        }
 
         default:
           break;
@@ -1457,111 +221,495 @@ const handleCopyCode = useCallback(async () => {
         return;
       }
 
-      const targetShape =
-        viewShapesRef.current.find(
-          (shape) => {
-            return (
-              shape.id ===
-              interaction.id
-            );
-          }
-        );
+      const targetShape = viewShapesRef.current.find(
+        (shape) => shape.id === interaction.id
+      );
 
       if (!targetShape) {
         setInteraction(null);
         return;
       }
 
-      if (
-        interaction.mode === "drag"
-      ) {
+      if (interaction.mode === "drag") {
         updateRect(targetShape.id, {
           x: targetShape.x,
           y: targetShape.y,
         });
       }
 
-      if (
-        interaction.mode === "resize"
-      ) {
+      if (interaction.mode === "resize") {
         updateRect(targetShape.id, {
           width: targetShape.width,
           height: targetShape.height,
         });
       }
 
-      if (
-        interaction.mode === "rotate"
-      ) {
+      if (interaction.mode === "rotate") {
         updateRect(targetShape.id, {
-          rotation:
-            targetShape.rotation ||
-            0,
+          rotation: targetShape.rotation || 0,
         });
       }
 
       setInteraction(null);
     };
 
-    window.addEventListener(
-      "mousemove",
-      handleMouseMove
-    );
-
-    window.addEventListener(
-      "mouseup",
-      handleMouseUp
-    );
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
 
     return () => {
-      window.removeEventListener(
-        "mousemove",
-        handleMouseMove
-      );
-
-      window.removeEventListener(
-        "mouseup",
-        handleMouseUp
-      );
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [
-    interaction,
-    updateShapeLocal,
-    updateRect,
-    autoScrollMain,
-    calculateSmartGuides,
-  ]);
+  }, [interaction]);
 
-  /*
-   * 履歴の図形名を日本語へ変換する。
-   *
-   * 現在のサーバーはchangesではなく
-   * before・afterを返す構造。
+  // ========== 計算済み値 ==========
+
+  const selectedShape = getSelectedShape(viewShapes, selectedId);
+  const isSelectedText = selectedShape?.type === "text";
+  const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
+
+  // ========== 内部ハンドラ関数 ==========
+
+  /**
+   * ドラッグ移動の処理
    */
-  const formatObjectLabel = (
-    historyItem
-  ) => {
+  const handleDragMove = useCallback(
+    (event, canvasRect) => {
+      const newX = event.clientX - canvasRect.left - interaction.offsetX;
+      const newY = event.clientY - canvasRect.top - interaction.offsetY;
+
+      const movingShape = viewShapesRef.current.find(
+        (shape) => shape.id === interaction.id
+      );
+
+      if (!movingShape) {
+        return;
+      }
+
+      if (event.shiftKey) {
+        setSmartGuides(EMPTY_SMART_GUIDES);
+        updateShapeLocal(interaction.id, { x: newX, y: newY }, setViewShapes, viewShapesRef);
+        return;
+      }
+
+      const snapResult = calculateSmartGuides(
+        { ...movingShape, x: newX, y: newY },
+        viewShapesRef.current
+      );
+
+      setSmartGuides(snapResult.guides);
+      updateShapeLocal(interaction.id, { x: snapResult.x, y: snapResult.y }, setViewShapes, viewShapesRef);
+    },
+    [interaction, calculateSmartGuides, updateShapeLocal]
+  );
+
+  /**
+   * リサイズ移動の処理
+   */
+  const handleResizeMove = useCallback((event) => {
+    setSmartGuides(EMPTY_SMART_GUIDES);
+    const diffX = event.clientX - interaction.startX;
+    const diffY = event.clientY - interaction.startY;
+
+    const newWidth = Math.max(
+      MIN_SHAPE_SIZE,
+      interaction.startWidth + diffX
+    );
+
+    const newHeight = Math.max(
+      MIN_SHAPE_SIZE,
+      interaction.startHeight + diffY
+    );
+
+    updateShapeLocal(
+      interaction.id,
+      { width: newWidth, height: newHeight },
+      setViewShapes,
+      viewShapesRef
+    );
+  }, [interaction, updateShapeLocal]);
+
+  /**
+   * 回転移動の処理
+   */
+  const handleRotateMove = useCallback((event) => {
+    setSmartGuides(EMPTY_SMART_GUIDES);
+    const currentPointerAngle =
+      (Math.atan2(
+        event.clientY - interaction.centerY,
+        event.clientX - interaction.centerX
+      ) *
+        180) /
+      Math.PI;
+
+    const angleDifference =
+      currentPointerAngle - interaction.startPointerAngle;
+
+    let newRotation = interaction.startRotation + angleDifference;
+
+    if (event.shiftKey) {
+      newRotation = Math.round(newRotation / ROTATION_SNAP_ANGLE) * ROTATION_SNAP_ANGLE;
+    }
+
+    newRotation = ((newRotation % 360) + 360) % 360;
+
+    updateShapeLocal(
+      interaction.id,
+      { rotation: Math.round(newRotation) },
+      setViewShapes,
+      viewShapesRef
+    );
+  }, [interaction, updateShapeLocal]);
+
+  /**
+   * ドラッグ・リサイズ時の画面端スクロール
+   */
+  const autoScrollMain = useCallback((event) => {
+    const main = mainRef.current;
+
+    if (!main) {
+      return;
+    }
+
+    const rect = main.getBoundingClientRect();
+
+    if (event.clientX > rect.right - AUTO_SCROLL_EDGE_SIZE) {
+      main.scrollLeft += AUTO_SCROLL_SPEED;
+    }
+
+    if (event.clientX < rect.left + AUTO_SCROLL_EDGE_SIZE) {
+      main.scrollLeft -= AUTO_SCROLL_SPEED;
+    }
+
+    if (event.clientY > rect.bottom - AUTO_SCROLL_EDGE_SIZE) {
+      main.scrollTop += AUTO_SCROLL_SPEED;
+    }
+
+    if (event.clientY < rect.top + AUTO_SCROLL_EDGE_SIZE) {
+      main.scrollTop -= AUTO_SCROLL_SPEED;
+    }
+  }, []);
+
+  /**
+   * 図形追加ハンドラ
+   */
+  const handleAddShape = useCallback(
+    (type) => {
+      addShape(type);
+    },
+    [addShape]
+  );
+
+  /**
+   * キャンバスクリアハンドラ
+   */
+  const handleClearCanvas = useCallback(() => {
+    clearCanvas();
+    clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+  }, [clearCanvas, clearSelectionState]);
+
+  /**
+   * 選択中図形削除ハンドラ
+   */
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedId) {
+      return;
+    }
+
+    const targetId = selectedId;
+
+    setViewShapes((prev) => {
+      const next = prev.filter((shape) => shape.id !== targetId);
+      viewShapesRef.current = next;
+      return next;
+    });
+
+    clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+    deleteRect(targetId);
+  }, [selectedId, deleteRect, clearSelectionState]);
+
+  /**
+   * 色変更ハンドラ
+   */
+  const handleColorChange = useCallback(
+    (event) => {
+      const fill = event.target.value;
+      if (!selectedId) {
+        return;
+      }
+      updateShapeLocal(selectedId, { fill }, setViewShapes, viewShapesRef);
+      updateRect(selectedId, { fill });
+    },
+    [selectedId, updateShapeLocal, updateRect]
+  );
+
+  /**
+   * テキスト編集終了・保存
+   */
+  const finishTextEditing = useCallback(
+    (shapeId) => {
+      if (cancelTextEditRef.current) {
+        cancelTextEditRef.current = false;
+        setEditingId(null);
+        return;
+      }
+
+      updateShapeLocal(shapeId, { text: draftText }, setViewShapes, viewShapesRef);
+      updateRect(shapeId, { text: draftText });
+      setEditingId(null);
+    },
+    [draftText, updateShapeLocal, updateRect]
+  );
+
+  /**
+   * テキスト編集中のキーハンドラ
+   */
+  const handleTextKeyDown = useCallback((event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelTextEditRef.current = true;
+      event.currentTarget.blur();
+    }
+  }, []);
+
+  /**
+   * Undo ハンドラ
+   */
+  const handleUndo = useCallback(() => {
+    clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+    undo();
+  }, [undo, clearSelectionState]);
+
+  /**
+   * Redo ハンドラ
+   */
+  const handleRedo = useCallback(() => {
+    clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+    redo();
+  }, [redo, clearSelectionState]);
+
+  /**
+   * 履歴ジャンプハンドラ
+   */
+  const handleHistoryClick = useCallback(
+    (historyItem) => {
+      if (interaction) {
+        console.warn("操作中は履歴ジャンプできません");
+        return;
+      }
+
+      clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+      jumpToHistory(historyItem.id);
+    },
+    [interaction, jumpToHistory, clearSelectionState]
+  );
+
+  /**
+   * 文字サイズ変更ハンドラ
+   */
+  const handleFontSizeChange = useCallback(
+    (event) => {
+      const fontSize = Number(event.target.value);
+
+      if (!Number.isFinite(fontSize)) {
+        return;
+      }
+
+      if (!selectedId) {
+        return;
+      }
+
+      const clampedSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
+      updateShapeLocal(selectedId, { fontSize: clampedSize }, setViewShapes, viewShapesRef);
+      updateRect(selectedId, { fontSize: clampedSize });
+    },
+    [selectedId, updateShapeLocal, updateRect]
+  );
+
+  /**
+   * 太字トグル
+   */
+  const toggleBold = useCallback(() => {
+    if (!selectedShape) return;
+
+    if (!selectedId) {
+      return;
+    }
+
+    const newWeight = selectedShape.fontWeight === "bold" ? "normal" : "bold";
+    updateShapeLocal(selectedId, { fontWeight: newWeight }, setViewShapes, viewShapesRef);
+    updateRect(selectedId, { fontWeight: newWeight });
+  }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
+
+  /**
+   * 斜体トグル
+   */
+  const toggleItalic = useCallback(() => {
+    if (!selectedShape) return;
+
+    if (!selectedId) {
+      return;
+    }
+
+    const newStyle = selectedShape.fontStyle === "italic" ? "normal" : "italic";
+    updateShapeLocal(selectedId, { fontStyle: newStyle }, setViewShapes, viewShapesRef);
+    updateRect(selectedId, { fontStyle: newStyle });
+  }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
+
+  /**
+   * 大文字表示トグル
+   */
+  const toggleUppercase = useCallback(() => {
+    if (!selectedShape) return;
+
+    if (!selectedId) {
+      return;
+    }
+
+    const newTransform =
+      selectedShape.textTransform === "uppercase" ? "none" : "uppercase";
+    updateShapeLocal(selectedId, { textTransform: newTransform }, setViewShapes, viewShapesRef);
+    updateRect(selectedId, { textTransform: newTransform });
+  }, [selectedId, selectedShape, updateShapeLocal, updateRect]);
+
+  /**
+   * 回転スライダー値をサーバーへ保存
+   */
+  const saveSelectedRotation = useCallback(() => {
+    if (!selectedId) {
+      return;
+    }
+
+    const targetShape = viewShapesRef.current.find(
+      (shape) => shape.id === selectedId
+    );
+
+    if (!targetShape) {
+      return;
+    }
+
+    updateRect(targetShape.id, {
+      rotation: targetShape.rotation || 0,
+    });
+  }, [selectedId, updateRect]);
+
+  /**
+   * 選択図形をサーバーとローカルで更新
+   */
+  const updateSelectedShape = useCallback(
+    (changes) => {
+      if (!selectedId) {
+        return;
+      }
+      updateShapeLocal(selectedId, changes, setViewShapes, viewShapesRef);
+      updateRect(selectedId, changes);
+    },
+    [selectedId, updateShapeLocal, updateRect]
+  );
+
+  /**
+   * レイヤー移動
+   */
+  const moveSelectedLayer = useCallback(
+    (direction) => {
+      const result = calculateLayerReorder(
+        selectedId,
+        direction,
+        viewShapesRef.current
+      );
+
+      if (!result) {
+        return;
+      }
+
+      const { nextShapes, changedShapes } = result;
+
+      setViewShapes(nextShapes);
+      viewShapesRef.current = nextShapes;
+
+      changedShapes.forEach(({ id, zIndex }) => {
+        updateRect(id, { zIndex });
+      });
+    },
+    [selectedId, calculateLayerReorder, updateRect]
+  );
+
+  /**
+   * レイヤーを前へ
+   */
+  const bringForward = useCallback(() => {
+    moveSelectedLayer("forward");
+  }, [moveSelectedLayer]);
+
+  /**
+   * レイヤーを後ろへ
+   */
+  const sendBackward = useCallback(() => {
+    moveSelectedLayer("backward");
+  }, [moveSelectedLayer]);
+
+  /**
+   * HTMLコード表示
+   */
+  const handleClickShowHtml = useCallback(() => {
+    handleShowHtmlCode(viewShapes, fileName, setCodeOutput);
+  }, [viewShapes, fileName, handleShowHtmlCode]);
+
+  /**
+   * CSSコード表示
+   */
+  const handleClickShowCss = useCallback(() => {
+    handleShowCssCode(viewShapes, setCodeOutput);
+  }, [viewShapes, handleShowCssCode]);
+
+  /**
+   * コード コピー
+   */
+  const handleClickCopyCode = useCallback(async () => {
+    const success = await handleCopyCode(codeOutput);
+    if (success) {
+      window.alert(`${codeOutput.type}コードをコピーしました`);
+    } else {
+      window.alert("コードをコピーできませんでした");
+    }
+  }, [codeOutput, handleCopyCode]);
+
+  /**
+   * JSONファイル保存
+   */
+  const handleClickSaveFile = useCallback(() => {
+    handleSaveJsonFile(viewShapes, fileName);
+  }, [viewShapes, fileName, handleSaveJsonFile]);
+
+  /**
+   * 履歴の図形名を日本語へ変換
+   */
+  const formatObjectLabel = useCallback((historyItem) => {
     const type =
-      historyItem.after?.type ||
-      historyItem.before?.type;
+      historyItem.after?.type || historyItem.before?.type;
 
     if (type) {
       return TYPE_LABELS[type] || type;
     }
 
     return historyItem.objectId
-      ? historyItem.objectId.slice(
-        0,
-        8
-      )
+      ? historyItem.objectId.slice(0, 8)
       : "";
-  };
+  }, []);
+
+  // ========== レンダリング ==========
 
   return (
     <div className="app">
       <header className="app-header">
-        <strong className="app-header-title" >
-          <img src="/pictuer/2aikon.png"></img>
+        <strong className="app-header-title">
+          <img src="/pictuer/2aikon.png" alt="Pikva Icon" />
           Pikva
         </strong>
 
@@ -1570,87 +718,64 @@ const handleCopyCode = useCallback(async () => {
           className="file-name-input"
           value={fileName}
           onChange={(event) => {
-            setFileName(
-              event.target.value
-            );
+            setFileName(event.target.value);
           }}
           placeholder="ファイル名"
         />
 
-        <button
-          type="button"
-          onClick={handleClearCanvas}
-        >
+        <button type="button" onClick={handleClearCanvas}>
           新規
         </button>
 
-        <button
-          type="button"
-          onClick={handleSaveFile}
-        >
+        <button type="button" onClick={handleClickSaveFile}>
           保存
         </button>
 
-        <button type="button">
-          開く
-        </button>
+        <button type="button">開く</button>
 
-        <button type="button">
-          PNG出力
-        </button>
+        <button type="button">PNG出力</button>
 
-        <button
-          type="button"
-          onClick={handleShowHtmlCode}
-        >
+        <button type="button" onClick={handleClickShowHtml}>
           HTML出力
         </button>
 
-        <button
-          type="button"
-          onClick={handleShowCssCode}
-        >
+        <button type="button" onClick={handleClickShowCss}>
           CSS出力
         </button>
       </header>
 
-      {codeOutput.content ? (
-  <section className="code-output-panel">
-    <div className="code-output-header">
-      <strong>
-        {codeOutput.type}コード
-      </strong>
+      {codeOutput.content && (
+        <section className="code-output-panel">
+          <div className="code-output-header">
+            <strong>{codeOutput.type}コード</strong>
 
-      <div>
-        <button
-          type="button"
-          onClick={handleCopyCode}
-        >
-          コピー
-        </button>
+            <div>
+              <button type="button" onClick={handleClickCopyCode}>
+                コピー
+              </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setCodeOutput({
-              type: "",
-              content: "",
-            });
-          }}
-        >
-          閉じる
-        </button>
-      </div>
-    </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCodeOutput({
+                    type: "",
+                    content: "",
+                  });
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
 
-    <textarea
-      className="code-output-textarea"
-      value={codeOutput.content}
-      readOnly
-      spellCheck={false}
-    />
-  </section>
-) : null}
+          <textarea
+            className="code-output-textarea"
+            value={codeOutput.content}
+            readOnly
+            spellCheck={false}
+          />
+        </section>
+      )}
 
       <div className="app-body">
         <aside className="tool">
@@ -1689,9 +814,7 @@ const handleCopyCode = useCallback(async () => {
             <button
               type="button"
               onClick={() =>
-                handleAddShape(
-                  "circle"
-                )
+                handleAddShape("circle")
               }
             >
               円を追加
@@ -1700,9 +823,7 @@ const handleCopyCode = useCallback(async () => {
             <button
               type="button"
               onClick={() =>
-                handleAddShape(
-                  "triangle"
-                )
+                handleAddShape("triangle")
               }
             >
               三角形を追加
@@ -1718,7 +839,7 @@ const handleCopyCode = useCallback(async () => {
             </button>
           </div>
 
-          {selectedShape ? (
+          {selectedShape && (
             <label className="rotation-tool">
               回転
 
@@ -1727,8 +848,7 @@ const handleCopyCode = useCallback(async () => {
                 min="0"
                 max="359"
                 value={Math.round(
-                  selectedShape.rotation ||
-                  0
+                  selectedShape.rotation || 0
                 )}
                 onChange={(event) => {
                   if (!selectedId) {
@@ -1741,7 +861,9 @@ const handleCopyCode = useCallback(async () => {
                       rotation: Number(
                         event.target.value
                       ),
-                    }
+                    },
+                    setViewShapes,
+                    viewShapesRef
                   );
                 }}
                 onPointerUp={
@@ -1754,15 +876,14 @@ const handleCopyCode = useCallback(async () => {
 
               <span>
                 {Math.round(
-                  selectedShape.rotation ||
-                  0
+                  selectedShape.rotation || 0
                 )}
                 °
               </span>
             </label>
-          ) : null}
+          )}
 
-          {selectedShape ? (
+          {selectedShape && (
             <div className="layer-tools">
               <span>重なり順</span>
 
@@ -1784,7 +905,7 @@ const handleCopyCode = useCallback(async () => {
                 </button>
               </div>
             </div>
-          ) : null}
+          )}
 
           <label className="color-tool">
             色
@@ -1792,8 +913,7 @@ const handleCopyCode = useCallback(async () => {
             <input
               type="color"
               value={
-                selectedShape?.fill ||
-                "#4f8cff"
+                selectedShape?.fill || "#4f8cff"
               }
               onChange={
                 handleColorChange
@@ -1801,15 +921,15 @@ const handleCopyCode = useCallback(async () => {
             />
           </label>
 
-          {isSelectedText ? (
+          {isSelectedText && (
             <div className="text-format-tools">
               <label>
                 文字サイズ
 
                 <input
                   type="number"
-                  min="8"
-                  max="200"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
                   value={
                     selectedShape
                       ?.fontSize || 24
@@ -1869,7 +989,7 @@ const handleCopyCode = useCallback(async () => {
                 </button>
               </div>
             </div>
-          ) : null}
+          )}
 
           <button
             type="button"
@@ -1901,13 +1021,7 @@ const handleCopyCode = useCallback(async () => {
               width: `${canvasWidth}px`,
               height: `${canvasHeight}px`,
             }}
-
-
             onMouseDown={(event) => {
-              /*
-               * 図形以外のキャンバスを押したら
-               * 選択を解除する。
-               */
               if (
                 event.target ===
                 event.currentTarget
@@ -1971,17 +1085,25 @@ const handleCopyCode = useCallback(async () => {
                       return;
                     }
 
-                    startDrag(
-                      event,
-                      shape
-                    );
+                    startDrag(event, shape, {
+                      canvasRef,
+                      setInteraction,
+                      setSelectedId,
+                      setEditingId,
+                    });
                   }}
                   onDoubleClick={(
                     event
                   ) => {
                     startTextEditing(
                       event,
-                      shape
+                      shape,
+                      {
+                        setSelectedId,
+                        setInteraction,
+                        setDraftText,
+                        setEditingId,
+                      }
                     );
                   }}
                   style={{
@@ -2088,7 +1210,12 @@ const handleCopyCode = useCallback(async () => {
                         ) => {
                           startResize(
                             event,
-                            shape
+                            shape,
+                            {
+                              setInteraction,
+                              setSelectedId,
+                              setEditingId,
+                            }
                           );
                         }}
                       />
@@ -2102,7 +1229,12 @@ const handleCopyCode = useCallback(async () => {
                           ) => {
                             startRotate(
                               event,
-                              shape
+                              shape,
+                              {
+                                setInteraction,
+                                setSelectedId,
+                                setEditingId,
+                              }
                             );
                           }}
                         />
