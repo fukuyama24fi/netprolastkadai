@@ -381,136 +381,154 @@ const App = () => {
 
 
   //図形の優先
-  const moveSelectedLayer = useCallback(
-    (direction) => {
-      if (!selectedId) {
-        return;
-      }
+const moveSelectedLayer = useCallback(
+  (direction) => {
+    if (!selectedId) {
+      return;
+    }
 
-      const currentShapes =
-        viewShapesRef.current;
+    const currentShapes =
+      viewShapesRef.current;
 
-      /*
-       * zIndexがまだない古い図形は、
-       * 現在の配列順を仮のzIndexとして使う
-       */
-      const orderedShapes = currentShapes
-        .map((shape, index) => {
-          const parsedZIndex =
-            Number(shape.zIndex);
+    if (currentShapes.length < 2) {
+      return;
+    }
 
-          return {
-            ...shape,
+    /*
+     * zIndexが重複していても、
+     * 元の配列順を使って安定して並べる
+     */
+    const orderedShapes = currentShapes
+      .map((shape, originalIndex) => {
+        const parsedZIndex =
+          Number(shape.zIndex);
 
-            calculatedZIndex:
-              Number.isFinite(parsedZIndex)
-                ? parsedZIndex
-                : index,
-          };
-        })
-        .sort((shapeA, shapeB) => {
-          return (
-            shapeA.calculatedZIndex -
-            shapeB.calculatedZIndex
-          );
-        });
+        return {
+          shape,
+          originalIndex,
+          calculatedZIndex:
+            Number.isFinite(parsedZIndex)
+              ? parsedZIndex
+              : originalIndex,
+        };
+      })
+      .sort((itemA, itemB) => {
+        const zIndexDifference =
+          itemA.calculatedZIndex -
+          itemB.calculatedZIndex;
 
-      const currentIndex =
-        orderedShapes.findIndex(
-          (shape) =>
-            shape.id === selectedId
-        );
-
-      if (currentIndex === -1) {
-        return;
-      }
-
-      /*
-       * 前へ：配列の次
-       * 後ろへ：配列の前
-       */
-      const targetIndex =
-        direction === "forward"
-          ? currentIndex + 1
-          : currentIndex - 1;
-
-      /*
-       * すでに最前面・最背面なら何もしない
-       */
-      if (
-        targetIndex < 0 ||
-        targetIndex >=
-        orderedShapes.length
-      ) {
-        return;
-      }
-
-      const selectedShapeForLayer =
-        orderedShapes[currentIndex];
-
-      const targetShape =
-        orderedShapes[targetIndex];
-
-      /*
-       * 選択中図形と隣の図形の
-       * zIndexを交換する
-       */
-      const selectedNewZIndex =
-        targetShape.calculatedZIndex;
-
-      const targetNewZIndex =
-        selectedShapeForLayer
-          .calculatedZIndex;
-
-      const nextShapes =
-        currentShapes.map((shape) => {
-          if (
-            shape.id ===
-            selectedShapeForLayer.id
-          ) {
-            return {
-              ...shape,
-              zIndex:
-                selectedNewZIndex,
-            };
-          }
-
-          if (
-            shape.id === targetShape.id
-          ) {
-            return {
-              ...shape,
-              zIndex: targetNewZIndex,
-            };
-          }
-
-          return shape;
-        });
-
-      /*
-       * 画面側を先に更新
-       */
-      setViewShapes(nextShapes);
-      viewShapesRef.current =
-        nextShapes;
-
-      /*
-       * サーバー側も2つとも更新
-       */
-      updateRect(
-        selectedShapeForLayer.id,
-        {
-          zIndex:
-            selectedNewZIndex,
+        if (zIndexDifference !== 0) {
+          return zIndexDifference;
         }
+
+        return (
+          itemA.originalIndex -
+          itemB.originalIndex
+        );
+      })
+      .map((item) => item.shape);
+
+    const selectedIndex =
+      orderedShapes.findIndex(
+        (shape) =>
+          shape.id === selectedId
       );
 
-      updateRect(targetShape.id, {
-        zIndex: targetNewZIndex,
+    if (selectedIndex === -1) {
+      return;
+    }
+
+    const targetIndex =
+      direction === "forward"
+        ? selectedIndex + 1
+        : selectedIndex - 1;
+
+    /*
+     * すでに最前面または最背面
+     */
+    if (
+      targetIndex < 0 ||
+      targetIndex >=
+        orderedShapes.length
+    ) {
+      return;
+    }
+
+    /*
+     * 選択図形と隣の図形を入れ替える
+     */
+    const reorderedShapes = [
+      ...orderedShapes,
+    ];
+
+    [
+      reorderedShapes[selectedIndex],
+      reorderedShapes[targetIndex],
+    ] = [
+      reorderedShapes[targetIndex],
+      reorderedShapes[selectedIndex],
+    ];
+
+    /*
+     * zIndexを必ず0, 1, 2...へ振り直す
+     */
+    const zIndexById = new Map();
+
+    reorderedShapes.forEach(
+      (shape, index) => {
+        zIndexById.set(
+          shape.id,
+          index
+        );
+      }
+    );
+
+    const changedShapes = [];
+
+    const nextShapes =
+      currentShapes.map((shape) => {
+        const newZIndex =
+          zIndexById.get(shape.id);
+
+        const currentZIndex =
+          Number(shape.zIndex);
+
+        if (
+          currentZIndex !==
+          newZIndex
+        ) {
+          changedShapes.push({
+            id: shape.id,
+            zIndex: newZIndex,
+          });
+        }
+
+        return {
+          ...shape,
+          zIndex: newZIndex,
+        };
       });
-    },
-    [selectedId, updateRect]
-  );
+
+    /*
+     * まず画面を更新
+     */
+    setViewShapes(nextShapes);
+    viewShapesRef.current =
+      nextShapes;
+
+    /*
+     * DB・共同編集側も更新
+     */
+    changedShapes.forEach(
+      ({ id, zIndex }) => {
+        updateRect(id, {
+          zIndex,
+        });
+      }
+    );
+  },
+  [selectedId, updateRect]
+);
 
   const bringForward = useCallback(() => {
     moveSelectedLayer("forward");
