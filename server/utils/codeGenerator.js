@@ -45,8 +45,7 @@ function generateHTMLCode(objects) {
 </html>`;
 }
 
-// 他のファイルで使えるように export
-export { generateHTMLCode };
+
 
 // キャンバスのJSON配列からCSSコードを生成する関数（HTMLとは別ファイル用）
 function generateCSSCode(objects) {
@@ -87,4 +86,5 @@ function generateCSSCode(objects) {
 ${rules.join('\n\n')}`;
 }
 
+// 他のファイルで使えるように export
 export { generateHTMLCode, generateCSSCode };
