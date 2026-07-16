@@ -678,7 +678,7 @@ const App = () => {
     } else {
       window.alert("コードをコピーできませんでした");
     }
-  }, [codeOutput, handleCopyCode]);
+  }, [codeOutput.type, codeOutput.content, handleCopyCode]);
 
   /**
    * JSONファイル保存
