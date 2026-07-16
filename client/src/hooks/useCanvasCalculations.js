@@ -1,7 +1,6 @@
-/**
- * キャンバス計算用カスタムフック
- * スマートガイド、レイヤー順序などの計算ロジック
- */
+// キャンバス計算用
+//スマートガイド、レイヤー順序
+ 
 
 import { useCallback } from "react";
 
@@ -30,7 +29,7 @@ export function useCanvasCalculations() {
     let verticalGuide = null;
     let horizontalGuide = null;
 
-    // 移動中図形のX軸アライメントポイント（左端・中央・右端）
+    // 移動中図形のX軸アライメントポイント
     const movingXPoints = [
       { value: movingShape.x, offset: 0 },
       {
@@ -43,7 +42,7 @@ export function useCanvasCalculations() {
       },
     ];
 
-    // 移動中図形のY軸アライメントポイント（上端・中央・下端）
+    // 移動中図形のY軸アライメントポイント
     const movingYPoints = [
       { value: movingShape.y, offset: 0 },
       {
@@ -116,9 +115,9 @@ export function useCanvasCalculations() {
   /**
    * レイヤー順序を計算・更新
    * @param {string} selectedId - 選択中の図形ID
-   * @param {string} direction - 移動方向 ("forward" | "backward")
+   * @param {string} direction - 移動方向
    * @param {array} currentShapes - 現在の図形配列
-   * @returns {object|null} 更新された図形配列と変更情報、またはnull
+   * @returns {object|null} 更新された図形配列と変更情報
    */
   const calculateLayerReorder = useCallback(
     (selectedId, direction, currentShapes) => {
@@ -174,7 +173,7 @@ export function useCanvasCalculations() {
         reorderedShapes[selectedIndex],
       ];
 
-      // zIndexを必ず0, 1, 2...へ振り直す
+      // zIndexを必ず振り直す
       const zIndexById = new Map();
       reorderedShapes.forEach((shape, index) => {
         zIndexById.set(shape.id, index);

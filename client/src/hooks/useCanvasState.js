@@ -1,5 +1,5 @@
 /**
- * キャンバス状態管理用カスタムフック
+ * キャンバス状態管理用
  */
 
 import { useCallback } from "react";
@@ -11,7 +11,7 @@ import { useCallback } from "react";
  */
 export function useCanvasState(canvasState) {
   /**
-   * ローカルで図形を更新（サーバー待たず）
+   * ローカルで図形を更新
    * @param {string} id - 図形ID
    * @param {object} changes - 変更内容
    * @param {function} setViewShapes - ビュー図形更新関数
@@ -43,7 +43,7 @@ export function useCanvasState(canvasState) {
    * 選択中図形を取得
    * @param {array} viewShapes - ビュー図形配列
    * @param {string} selectedId - 選択中のID
-   * @returns {object|undefined} 選択中の図形、または undefined
+   * @returns {object|undefined} 選択中の図形
    */
   const getSelectedShape = useCallback((viewShapes, selectedId) => {
     return viewShapes.find((shape) => shape.id === selectedId);
@@ -70,7 +70,7 @@ export function useCanvasState(canvasState) {
 
   /**
    * 削除時に選択状態をクリア
-   * @param {object} setters - 各state設定関数オブジェクト
+   * @param {object} setters
    */
   const clearSelectionState = useCallback((setters) => {
     const { setSelectedId, setEditingId, setInteraction } = setters;
@@ -81,7 +81,7 @@ export function useCanvasState(canvasState) {
 
   /**
    * テキスト編集状態をリセット
-   * @param {object} setters - 各state設定関数オブジェクト
+   * @param {object} setters 
    */
   const resetTextEditingState = useCallback((setters) => {
     const { setEditingId, setDraftText } = setters;

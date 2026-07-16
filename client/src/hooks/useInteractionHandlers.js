@@ -1,5 +1,5 @@
 /**
- * ユーザー操作ハンドラ用カスタムフック
+ * ユーザー操作ハンドラ用
  * ドラッグ、リサイズ、回転などの開始処理
  */
 
@@ -14,7 +14,7 @@ export function useInteractionHandlers() {
    * 図形ドラッグ開始
    * @param {event} event - マウスイベント
    * @param {object} shape - ドラッグ対象の図形
-   * @param {object} refs - canvasRef と interaction設定関数
+   * @param {object} refs 
    */
   const startDrag = useCallback(
     (event, shape, { canvasRef, setInteraction, setSelectedId, setEditingId }) => {
