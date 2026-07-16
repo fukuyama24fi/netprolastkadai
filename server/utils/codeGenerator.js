@@ -47,3 +47,44 @@ function generateHTMLCode(objects) {
 
 // 他のファイルで使えるように export
 export { generateHTMLCode };
+
+// キャンバスのJSON配列からCSSコードを生成する関数（HTMLとは別ファイル用）
+function generateCSSCode(objects) {
+    const rules = objects.map(obj => {
+        const declarations = [
+            'position: absolute',
+            `left: ${obj.x}px`,
+            `top: ${obj.y}px`,
+            `width: ${obj.width}px`,
+            `height: ${obj.height}px`,
+        ];
+
+        if (obj.type === 'circle') {
+            declarations.push('border-radius: 50%', `background-color: ${obj.fill}`);
+        } else if (obj.type === 'triangle') {
+            declarations.push('clip-path: polygon(50% 0%, 100% 100%, 0% 100%)', `background-color: ${obj.fill}`);
+        } else if (obj.type === 'text') {
+            declarations.push('background-color: transparent', `color: ${obj.fill}`, `font-size: ${obj.fontSize || 24}px`);
+        } else {
+            declarations.push(`background-color: ${obj.fill}`);
+        }
+
+        if (obj.rotation) {
+            declarations.push(`transform: rotate(${obj.rotation}deg)`);
+        }
+
+        return `#${obj.id} {\n  ${declarations.join(';\n  ')};\n}`;
+    });
+
+    return `.canvas-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f0f0f0;
+}
+
+${rules.join('\n\n')}`;
+}
+
+export { generateHTMLCode, generateCSSCode };
