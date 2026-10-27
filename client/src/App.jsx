@@ -45,6 +45,8 @@ const DEFAULT_CANVAS_SCALE = 0.55;
 // 下のスライダーで選べる倍率の範囲（%）
 const ZOOM_SLIDER_MIN = 25;
 const ZOOM_SLIDER_MAX = 150;
+// サーバーが1回に送ってくる履歴の件数（server.js の HISTORY_SEND_LIMIT と同じ）
+const HISTORY_PAGE_SIZE = 200;
 
 // 縮小表示中のキャンバスの倍率を、画面上の実際の大きさから求める
 // getBoundingClientRect() は縮小後の大きさ、offsetWidth は縮小前の大きさを返すので、その比が倍率になる
@@ -62,6 +64,9 @@ const App = () => {
   const {
     shapes,
     history,
+    hasOlderHistory, // まだ古い履歴がサーバーにあるか
+    isLoadingOlderHistory, // 古い履歴を読み込み中か
+    loadOlderHistory, // さらに古い履歴を200件読み込む
     userName,
     setUserName,
     addShape,
@@ -132,19 +137,52 @@ const App = () => {
     viewShapesRef.current = shapes;
   }, [shapes]);
 
-  // 前回の履歴の件数（ページを開いた直後の読み込みかどうかを見分けるため）
-  const prevHistoryLengthRef = useRef(0);
+  // 前回描いたときの履歴の様子（一番古い・一番新しい履歴のID、高さ）
+  // 履歴がどう変わったかで、スクロールのしかたを変えるために覚えておく
+  const prevHistoryInfoRef = useRef(null);
 
-  // 履歴が更新されたら一番下まで移動
-  // ページを開いた直後に履歴がまとめて届いたときは、アニメーションせずに一気に一番下へ
-  // それ以降に新しい履歴が増えたときは、なめらかにスクロールする
-  useEffect(() => {
-    const isFirstLoad = prevHistoryLengthRef.current === 0;
-    prevHistoryLengthRef.current = history.length;
-
+  // 履歴が変わったときのスクロール
+  //   ページを開いた直後に履歴がまとめて届いた → アニメーションせずに一気に一番下へ
+  //   新しい履歴が増えた（一番新しいIDが変わった） → 一番下の近くを見ていたら、なめらかに一番下へ
+  //                                                    （古い履歴を読んでいる途中なら、引き戻さない）
+  //   上に古い履歴が付け足された（一番古いIDだけ変わった） → 増えた高さの分だけ下げて、見ている位置を保つ
+  // useLayoutEffect なので、画面に描かれる前に位置を直せる（付け足した瞬間に表示がガクッと動かない）
+  useLayoutEffect(() => {
     const scroller = historyScrollRef.current;
-    if (isFirstLoad && scroller) {
+    const prev = prevHistoryInfoRef.current;
+    const firstId = history[0]?.id;
+    const lastId = history[history.length - 1]?.id;
+    prevHistoryInfoRef.current = {
+      firstId,
+      lastId,
+      scrollHeight: scroller?.scrollHeight ?? 0,
+    };
+
+    // 履歴タブを開いていないときは何もしない（開いたときに下の処理で一番下へ移動する）
+    if (!scroller) {
+      return;
+    }
+
+    // ページを開いた直後
+    if (!prev || prev.lastId === undefined) {
       scroller.scrollTop = scroller.scrollHeight;
+      return;
+    }
+
+    // 一番新しい履歴は同じ
+    if (prev.lastId === lastId) {
+      // 上に古い履歴が付け足された
+      if (prev.firstId !== firstId && prev.scrollHeight > 0) {
+        scroller.scrollTop += scroller.scrollHeight - prev.scrollHeight;
+      }
+      return;
+    }
+
+    // 新しい履歴が増えた
+    // 増える前の高さで、一番下からどれくらい離れていたかを見る（80px以内なら「一番下を見ていた」とする）
+    const distanceFromBottom =
+      prev.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    if (distanceFromBottom > 80) {
       return;
     }
     historyEndRef.current?.scrollIntoView({
@@ -153,12 +191,26 @@ const App = () => {
     });
   }, [history]);
 
+  // 編集履歴を一番上の近くまでスクロールしたら、さらに古い履歴を読み込む
+  const handleHistoryScroll = useCallback(
+    (event) => {
+      if (event.currentTarget.scrollTop < 40) {
+        loadOlderHistory();
+      }
+    },
+    [loadOlderHistory]
+  );
+
   // 履歴タブを開いたときは、アニメーションせずに最初から一番下（最新の履歴）を表示する
   // useLayoutEffect は画面に描かれる前に動くので、上から流れていく様子が見えない
   useLayoutEffect(() => {
     const scroller = historyScrollRef.current;
     if (sidebarTab === "history" && scroller) {
       scroller.scrollTop = scroller.scrollHeight;
+      // 古い履歴を付け足すときの位置合わせに使う高さも、今の高さにしておく
+      if (prevHistoryInfoRef.current) {
+        prevHistoryInfoRef.current.scrollHeight = scroller.scrollHeight;
+      }
     }
   }, [sidebarTab]);
 
@@ -1437,7 +1489,11 @@ const App = () => {
             <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
           // 履歴タブの中身。タブを固定するため、スクロールはこの中だけで行う
-          <div className="history-scroll" ref={historyScrollRef}>
+          <div
+            className="history-scroll"
+            ref={historyScrollRef}
+            onScroll={handleHistoryScroll}
+          >
           <div className="user-settings">
             表示名：
 
@@ -1450,6 +1506,15 @@ const App = () => {
               }}
             />
           </div>
+
+          {/* 一番上までスクロールして、古い履歴を読み込んでいる間 */}
+          {isLoadingOlderHistory && (
+            <div className="history-older-status">古い履歴を読み込み中…</div>
+          )}
+          {/* さかのぼって、一番古い履歴まで来たとき */}
+          {!hasOlderHistory && !isLoadingOlderHistory && history.length > HISTORY_PAGE_SIZE && (
+            <div className="history-older-status">これより前の履歴はありません</div>
+          )}
 
           <ul className="history-list">
             {history.map(

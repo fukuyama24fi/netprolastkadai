@@ -35,6 +35,40 @@ const io = new Server(server, {
 //キャンバスの状態を保持する変数
 let canvasState = [];
 
+//クライアントに送る履歴の最大件数（接続したとき・履歴が変わったとき）
+const HISTORY_SEND_LIMIT = 200;
+
+//==================== 操作の順番待ち ====================
+//キャンバスを書き換える操作は、届いた順に1つずつ処理する
+//（前は、Undo中やAIの反映中に届いた操作は捨てていた。今は捨てずに、前の操作が終わるまで待たせる）
+//AIへの質問(AI_CHAT)は時間がかかるので並ばせない（並ばせると、その間みんなの操作が止まるため）
+const QUEUED_ACTIONS = [
+    "ADD", "UPDATE", "DELETE", "CLEAR", "UNDO", "REDO", "JUMP_TO_HISTORY",
+    "AI_APPLY", "AI_REVERT"
+];
+//今並んでいる最後の操作（Promise）。新しい操作は、これが終わってから動く
+let editQueue = Promise.resolve();
+
+//操作を列の最後に並べる。前の操作が失敗しても、次の操作は動くようにしている
+function runInQueue(task) {
+    const run = editQueue.then(task, task);
+    editQueue = run.catch(() => { });
+    return run;
+}
+
+//その人の画面を、サーバーの正しい状態に戻す（キャンバス全体と履歴を送り直す）
+//操作を反映できなかったとき（図形がもう無い・DBエラーなど）に使う
+//自分の画面だけ図形が動いたままになる「ズレ」を直すため
+function resyncClient(socket) {
+    socket.emit("message", { action: "INIT", objects: canvasState });
+    socket.emit("message", {
+        action: "HISTORY_RESPONSE",
+        hasOlder: historyList.length > HISTORY_SEND_LIMIT,
+        history: historyList.slice(-HISTORY_SEND_LIMIT)
+    });
+}
+//==================== 操作の順番待ちここまで ====================
+
 //Undo/Redo用のポインター方式メモリ変数 (NEW)
 let historyList = [];        //DBのedit_historyをキャッシュした配列
 let historyPointer = -1;     //現在指している位置（配列のindex）
@@ -77,39 +111,25 @@ async function saveEditHistory({ action, objectId, userId, userName, before, aft
 }
 
 //新しく接続してきた人に、過去の操作履歴を送る関数
-//直近100件だけ取得（全件だと数が増えたとき重くなるので）
+//直近 HISTORY_SEND_LIMIT 件だけ送る（全件だと数が増えたとき重くなるので）
+//サーバーのメモリ(historyList)はDBの edit_history と同じ内容なので、DBには問い合わせずにメモリから送る
+//（broadcastHistory や古い履歴の読み込みと同じ並び順・同じ形になる）
 async function sendHistory(socket) {
-    try {
-        const result = await pool.query(
-            `SELECT 
-                h.id,
-                h.action, 
-                h.object_id AS "objectId", 
-                h.user_id AS "userId", 
-                h.user_name AS "userName", 
-                h.before, 
-                h.after,
-                h.created_at AS "createdAt"
-             FROM edit_history h
-             ORDER BY h.created_at DESC
-             LIMIT 100`
-        );
-
-        socket.emit("message", {
-            action: "HISTORY_RESPONSE",
-            history: result.rows.reverse()
-        });
-    } catch (err) {
-        console.error("履歴の取得に失敗しました:", err);
-    }
+    socket.emit("message", {
+        action: "HISTORY_RESPONSE",
+        history: historyList.slice(-HISTORY_SEND_LIMIT),
+        hasOlder: historyList.length > HISTORY_SEND_LIMIT //これより古い履歴があるか（画面で「さらに古い履歴」を読み込むかの判断に使う）
+    });
 }
 
-//履歴一覧を「今の全件」の状態で全クライアントに同期するヘルパー
-//pointerがどこにあるかに関係なく、historyList自体が実際に短くなっていない限り全部送る
+//履歴一覧を全クライアントに同期するヘルパー
+//pointerがどこにあるかに関係なく、historyListの最新 HISTORY_SEND_LIMIT 件を送る
+//（全件送ると、その日の編集が増えるほど1回の操作ごとの通信が重くなるため。サーバーのメモリには全件残っている）
 function broadcastHistory() {
     io.emit("message", {
         action: "HISTORY_RESPONSE",
-        history: historyList.map(h => ({
+        hasOlder: historyList.length > HISTORY_SEND_LIMIT, //これより古い履歴があるか
+        history: historyList.slice(-HISTORY_SEND_LIMIT).map(h => ({
             id: h.id,
             action: h.action,
             objectId: h.objectId,
@@ -505,12 +525,16 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
     sendHistory(socket);
 
     //メッセージ受信とaction分岐
-    socket.on("message", async (data) => { //クライアントからの操作を受信
+    //クライアントからの操作を受信したときの処理（実際の受信は下の socket.on("message") で行う）
+    const handleMessage = async (data) => {
         console.log("受信したアクション:", data.action, data);
 
         //排他制御:他のユーザーがUNDO/REDO/JUMPを処理中の場合は、通常のアクションを弾く
+        //※ 今はこれらの操作を順番待ちにしているので、通常ここには来ない。念のため残している
+        //   弾いたときは、その人の画面を正しい状態に戻す
         if (isProcessing && ["ADD", "UPDATE", "DELETE", "CLEAR", "UNDO", "REDO", "JUMP_TO_HISTORY"].includes(data.action)) {
             console.log(`[ロック中] 他の非同期処理が実行中のため、要求をスキップしました: ${data.action}`);
+            resyncClient(socket);
             return;
         }
 
@@ -548,8 +572,6 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); //実際に切り捨てた時だけ再読み込み
                     }
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
                     //履歴に記録
                     const historyEntry = await saveEditHistory({
@@ -569,6 +591,7 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("ADD処理のDB保存エラー:", err);
+                    resyncClient(socket); //その人の画面を正しい状態に戻す
                 }
                 break;
             }
@@ -595,6 +618,7 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 const obj = canvasState.find(obj => obj.id === data.id);
                 if (!obj) { //updateするオブジェクトがあるか
                     console.log("オブジェクトが見つかりません:", data.id);
+                    resyncClient(socket); //他の人が先に消していた。その人の画面からも消す
                     break;
                 }
 
@@ -603,9 +627,6 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); //実際に切り捨てた時だけ再読み込み
                     }
-
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
 
                     //変更前の状態を保存（undo用）
@@ -647,19 +668,24 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
 
                 } catch (err) {
                     console.error("UPDATE失敗:", err);
+                    resyncClient(socket); //その人の画面を正しい状態に戻す
                 }
                 break;
             }
 
             case "DELETE": {
+                //消す図形がもう無い（他の人が先に消した・Undoで消えた）ときは何もしない
+                //（そのまま進むと、中身が空の削除が履歴に残り、Undoしたときに壊れるため）
+                if (!canvasState.find(obj => obj.id === data.id)) {
+                    console.log("削除するオブジェクトが見つかりません:", data.id);
+                    resyncClient(socket);
+                    break;
+                }
                 try {
                     //ポインター後ろを削除
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); //実際に切り捨てた時だけ再読み込み
                     }
-
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
                     //削除前のオブジェクトを保存（undo用）
                     const deletedObj = canvasState.find(obj => obj.id === data.id); //消す前に保持
@@ -686,6 +712,7 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     broadcastHistory(); //切り捨て後の履歴一覧をフロントにも反映
                 } catch (err) {
                     console.error("DELETE処理のDB保存エラー:", err);
+                    resyncClient(socket); //その人の画面を正しい状態に戻す
                 }
                 break;
             }
@@ -696,9 +723,6 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     if (await truncateHistoryAfterPointer()) {
                         await reloadHistoryListFromDB(); //実際に切り捨てた時だけ再読み込み
                     }
-
-                    //DBから再読み込みしてメモリとDBを同期
-                    await reloadHistoryListFromDB();
 
                     //[...] はスプレッド構文。消える前の全オブジェクト配列をコピーして保持
                     //クリア前の全オブジェクトを保存（undo用）
@@ -1092,6 +1116,25 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 break;
             }
 
+            //編集履歴を一番上までスクロールした人にだけ、さらに古い履歴を送る
+            //beforeId: その人の画面に出ている一番古い履歴のID。これより古いものを最大 HISTORY_SEND_LIMIT 件返す
+            //読むだけでキャンバスは変えないので、順番待ちには並ばせない
+            case "HISTORY_OLDER": {
+                const beforeId = Number(data.beforeId);
+                if (!Number.isFinite(beforeId)) {
+                    break;
+                }
+                //サーバーのメモリ(historyList)には全件あるので、DBには問い合わせない
+                const older = historyList.filter(h => h && Number(h.id) < beforeId);
+                const page = older.slice(-HISTORY_SEND_LIMIT);
+                socket.emit("message", {
+                    action: "HISTORY_OLDER_RESPONSE",
+                    history: page,
+                    hasOlder: older.length > page.length //さらに古い履歴が残っているか
+                });
+                break;
+            }
+
             case "EXPORT_CODE": {
                 try {
                     const format = data.format; //"html" または "css"
@@ -1131,7 +1174,16 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 console.log("存在しない操作です", data.action);
                 return;
         }
+    };
+
+    //メッセージ受信
+    //キャンバスを書き換える操作は順番待ちの列に並べ、それ以外（AIへの質問・名前変更・コード出力）はすぐ処理する
+    socket.on("message", (data) => {
+        const task = () => handleMessage(data);
+        const run = QUEUED_ACTIONS.includes(data?.action) ? runInQueue(task) : task();
+        run.catch(err => console.error("操作の処理に失敗しました:", data?.action, err));
     });
+
     //切断時にログを出す
     socket.on('disconnect', () => {
         console.log(`${socket.id} 接続が切断されました`);
