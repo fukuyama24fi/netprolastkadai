@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import ProposalPreview from "./ProposalPreview";
 
@@ -196,9 +196,25 @@ export default function AiChatPanel({
   const [input, setInput] = useState("");
   // 会話の一番下の目印（ここまでスクロールさせる）
   const endRef = useRef(null);
+  // 会話の一覧（スクロールする部分）
+  const messagesRef = useRef(null);
+  // タブを開いたときの会話（これと同じ間は、まだ新しいメッセージが来ていないということ）
+  const initialMessagesRef = useRef(messages);
 
-  // 新しいメッセージが来たら一番下までスクロール
+  // AIタブを開いたときは、アニメーションせずに最初から一番下（最新の会話）を表示する
+  // useLayoutEffect は画面に描かれる前に動くので、上から流れていく様子が見えない
+  useLayoutEffect(() => {
+    const scroller = messagesRef.current;
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  }, []);
+
+  // 新しいメッセージが来たら一番下までなめらかにスクロール（開いた直後は上で済ませているので何もしない）
   useEffect(() => {
+    if (messages === initialMessagesRef.current && !isWaiting) {
+      return;
+    }
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isWaiting]);
 
@@ -229,7 +245,7 @@ export default function AiChatPanel({
   return (
     <div className="ai-chat">
       {/* 会話の一覧（ここだけスクロールする） */}
-      <div className="ai-chat-messages">
+      <div className="ai-chat-messages" ref={messagesRef}>
         {messages.map((message) => (
           // role によって吹き出しの位置と色が変わる（App.css の .ai-message-user など）
           <div

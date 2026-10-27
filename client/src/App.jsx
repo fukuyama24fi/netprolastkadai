@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -39,6 +40,8 @@ const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
 // キャンバスを縮小表示するときの最小の倍率（これより小さくなる場合はスクロールで見る）
 const MIN_CANVAS_SCALE = 0.25;
+// 開いたときのキャンバスの倍率（55%）。「全体表示」を押すと画面に収まる大きさになる
+const DEFAULT_CANVAS_SCALE = 0.55;
 // 下のスライダーで選べる倍率の範囲（%）
 const ZOOM_SLIDER_MIN = 25;
 const ZOOM_SLIDER_MAX = 150;
@@ -103,6 +106,8 @@ const App = () => {
   const canvasRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
+  // 履歴タブのスクロールする部分（.history-scroll）
+  const historyScrollRef = useRef(null);
   const viewShapesRef = useRef([]);
   const interactionRef = useRef(null);
   const didMoveRef = useRef(false);
@@ -127,14 +132,35 @@ const App = () => {
     viewShapesRef.current = shapes;
   }, [shapes]);
 
+  // 前回の履歴の件数（ページを開いた直後の読み込みかどうかを見分けるため）
+  const prevHistoryLengthRef = useRef(0);
+
   // 履歴が更新されたら一番下まで移動
-   
+  // ページを開いた直後に履歴がまとめて届いたときは、アニメーションせずに一気に一番下へ
+  // それ以降に新しい履歴が増えたときは、なめらかにスクロールする
   useEffect(() => {
+    const isFirstLoad = prevHistoryLengthRef.current === 0;
+    prevHistoryLengthRef.current = history.length;
+
+    const scroller = historyScrollRef.current;
+    if (isFirstLoad && scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+      return;
+    }
     historyEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [history, sidebarTab]); // 履歴タブに戻ったときも一番下へ
+  }, [history]);
+
+  // 履歴タブを開いたときは、アニメーションせずに最初から一番下（最新の履歴）を表示する
+  // useLayoutEffect は画面に描かれる前に動くので、上から流れていく様子が見えない
+  useLayoutEffect(() => {
+    const scroller = historyScrollRef.current;
+    if (sidebarTab === "history" && scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  }, [sidebarTab]);
 
   /**
    * サーバーからHTMLが返ってきたらダウンロード
@@ -285,15 +311,16 @@ const App = () => {
   const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
 
   // ========== キャンバスの縮小表示 ==========
-  // キャンバス全体が左右のサイドバーの間（.main）に収まるように縮小して表示する
+  // キャンバスを縮小して表示する（最初は DEFAULT_CANVAS_SCALE。下のバーで変えられる）
   // 図形の座標（x, y, width, height）は縮小前のまま。見た目だけを transform: scale() で縮める
   // マウスの位置から座標を計算するところ（ドラッグ・リサイズ）は、この縮小率で割って元の大きさに戻している
   //
   // 倍率は2種類あり、どちらを使うかは manualScale で決まる
   //   fitScale    : 全体が収まる倍率（画面の広さから自動で計算する）
   //   manualScale : 下のスライダーで選んだ倍率。null のときは「全体表示」（fitScale を使う）
+  //                 最初は DEFAULT_CANVAS_SCALE（55%）
   const [fitScale, setFitScale] = useState(1);
-  const [manualScale, setManualScale] = useState(null);
+  const [manualScale, setManualScale] = useState(DEFAULT_CANVAS_SCALE);
   // 実際にキャンバスに使う倍率
   const canvasScale = manualScale ?? fitScale;
 
@@ -1410,7 +1437,7 @@ const App = () => {
             <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
           // 履歴タブの中身。タブを固定するため、スクロールはこの中だけで行う
-          <div className="history-scroll">
+          <div className="history-scroll" ref={historyScrollRef}>
           <div className="user-settings">
             表示名：
 
