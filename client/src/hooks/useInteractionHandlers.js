@@ -29,11 +29,17 @@ export function useInteractionHandlers() {
 
       const canvasRect = canvas.getBoundingClientRect();
 
+      // キャンバスは縮小表示されていることがある（App.jsx の canvasScale）
+      // 縮小後の大きさ ÷ 縮小前の大きさ で倍率を求め、マウスの位置をキャンバス上の座標に直す
+      const scale = canvas.offsetWidth
+        ? canvasRect.width / canvas.offsetWidth
+        : 1;
+
       setInteraction({
         mode: "drag",
         id: shape.id,
-        offsetX: event.clientX - canvasRect.left - shape.x,
-        offsetY: event.clientY - canvasRect.top - shape.y,
+        offsetX: (event.clientX - canvasRect.left) / scale - shape.x,
+        offsetY: (event.clientY - canvasRect.top) / scale - shape.y,
       });
 
       event.preventDefault();
