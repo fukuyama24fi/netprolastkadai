@@ -8,7 +8,9 @@ import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライ
 
 dotenv.config(); //.envファイルを適用
 import { pool } from './config/db.js'; //データベース接続用
-import { generateHTMLCode } from './utils/codeGenerator.js'; //コード抽出用
+import { generateHTMLCode, generateCSSCode } from './utils/codeGenerator.js'; //コード抽出用
+import { askCanvasAi } from './ai/aiService.js'; //AIチャット用
+import { validateOperations, buildShapeFromAddOperation } from './ai/validateOperations.js'; //AIの操作の検証用
 const app = express();
 app.use(cors());
 app.use(express.json());//JSON形式のリクエストを受け取れるようにする
@@ -88,7 +90,7 @@ async function sendHistory(socket) {
                 h.before, 
                 h.after,
                 h.created_at AS "createdAt"
-             FROM edit_history
+             FROM edit_history h
              ORDER BY h.created_at DESC
              LIMIT 100`
         );
@@ -176,7 +178,128 @@ async function syncCanvasObjectsToDB() {
     await pool.query('COMMIT');
 }
 
+//==================== AI機能用☆ ====================
+//既存の case "ADD" / "UPDATE" / "DELETE" と同じ処理を「関数」として切り出した新しい関数たち
+//（既存の case 文はまだ触っていない。AI_APPLY からだけ呼ぶ）
 
+
+//同じ人がAIに連続で頼める間隔（ミリ秒）
+const AI_COOLDOWN_MS = 10000;
+//サーバー全体で1分間にAIを呼べる回数（GroqはAPIキー全体で1分あたりのトークン数に上限があるため）
+const AI_GLOBAL_LIMIT_PER_MINUTE = Number(process.env.AI_GLOBAL_LIMIT_PER_MINUTE) || 8;
+const lastAiRequestAt = {}; //接続ID → 最後に頼んだ時刻
+let aiRequestTimes = []; //直近1分間にAIを呼んだ時刻の一覧
+
+//新しい編集の前に、ポインターより後ろの履歴を切り捨てる
+async function prepareForNewEdit() {
+    if (await truncateHistoryAfterPointer()) {
+        await reloadHistoryListFromDB(); //実際に切り捨てた時だけ再読み込み
+    }
+}
+
+//履歴を保存してメモリにも積む
+//saveEditHistory が失敗すると undefined が返り、historyList に undefined が入って Undo が壊れるので、ここで止める
+async function recordHistory(params) {
+    const historyEntry = await saveEditHistory(params);
+    if (!historyEntry) {
+        throw new Error("履歴の保存に失敗しました");
+    }
+    historyList.push(historyEntry);
+    historyPointer = historyList.length - 1;
+    return historyEntry;
+}
+
+//図形を1つ追加する（case "ADD" と同じ処理）
+async function applyAdd(shape, userId, userName) {
+    await prepareForNewEdit();
+    await pool.query(
+        `INSERT INTO canvas_objects (id, type, x, y, width, height, fill, text, rotation, font_size, font_weight, font_style, text_transform)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+            shape.id, shape.type, shape.x, shape.y, shape.width, shape.height, shape.fill, shape.text ?? null,
+            shape.rotation ?? 0, shape.fontSize ?? null, shape.fontWeight ?? null, shape.fontStyle ?? null, shape.textTransform ?? null
+        ]
+    );
+    canvasState.push(shape);
+    const historyEntry = await recordHistory({
+        action: "ADD", objectId: shape.id, userId, userName, before: null, after: shape
+    });
+    io.emit("message", { action: "ADD", object: shape, userId, history: historyEntry });
+}
+
+//図形を1つ変更する（case "UPDATE" と同じ処理）
+async function applyUpdate(id, changes, userId, userName) {
+    const obj = canvasState.find(o => o.id === id);
+    if (!obj) {
+        throw new Error(`オブジェクトが見つかりません: ${id}`);
+    }
+    //許可された列だけに絞る
+    const updateData = {};
+    for (const key of Object.keys(changes)) {
+        if (ALLOWED_UPDATE_FIELDS.includes(key)) {
+            updateData[key] = changes[key];
+        }
+    }
+    if (Object.keys(updateData).length === 0) {
+        throw new Error("更新可能な項目がありません");
+    }
+
+    await prepareForNewEdit();
+    const beforeState = { ...obj };
+    const keys = Object.keys(updateData)
+        .map((key, index) => `${UPDATE_COLUMN_MAP[key]} = $${index + 2}`)
+        .join(",");
+    await pool.query(
+        `UPDATE canvas_objects SET ${keys} WHERE id = $1`,
+        [id, ...Object.values(updateData)]
+    );
+    Object.assign(obj, updateData);
+    const historyEntry = await recordHistory({
+        action: "UPDATE", objectId: id, userId, userName, before: beforeState, after: { ...obj }
+    });
+    io.emit("message", { action: "UPDATE", id, changes: updateData, userId, history: historyEntry });
+}
+
+//図形を1つ削除する（case "DELETE" と同じ処理）
+async function applyDelete(id, userId, userName) {
+    const deletedObj = canvasState.find(o => o.id === id);
+    if (!deletedObj) {
+        throw new Error(`オブジェクトが見つかりません: ${id}`);
+    }
+    await prepareForNewEdit();
+    await pool.query('DELETE FROM canvas_objects WHERE id = $1', [id]);
+    canvasState = canvasState.filter(o => o.id !== id);
+    const historyEntry = await recordHistory({
+        action: "DELETE", objectId: id, userId, userName, before: deletedObj, after: null
+    });
+    io.emit("message", { action: "DELETE", id, userId, history: historyEntry });
+}
+
+//今のキャンバスで一番大きい zIndex（AIの図形を一番手前に置くため）
+function getMaxZIndex() {
+    return canvasState.reduce((max, obj, index) => {
+        const z = Number(obj.zIndex);
+        return Math.max(max, Number.isFinite(z) ? z : index);
+    }, -1);
+}
+
+//AIを呼んでよいか（連打と使いすぎの防止）。ダメなら理由の文章を返す
+function checkAiRateLimit(connectionId) {
+    const now = Date.now();
+    const last = lastAiRequestAt[connectionId] || 0;
+    if (now - last < AI_COOLDOWN_MS) {
+        const waitSec = Math.ceil((AI_COOLDOWN_MS - (now - last)) / 1000);
+        return `少し待ってからもう一度話しかけてね（あと${waitSec}秒）`;
+    }
+    aiRequestTimes = aiRequestTimes.filter(t => now - t < 60000);
+    if (aiRequestTimes.length >= AI_GLOBAL_LIMIT_PER_MINUTE) {
+        return "いまAIが混み合っています。30秒ほど待ってからもう一度試してね";
+    }
+    lastAiRequestAt[connectionId] = now;
+    aiRequestTimes.push(now);
+    return null;
+}
+//==================== AI機能用☆ ここまで ====================
 
 //サーバー起動時にDBから初期データを読み込む
 async function startServer() {
@@ -711,6 +834,110 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 break;
             }
 
+            //AIに話しかける。キャンバスはまだ変えず、頼んだ本人にだけ「返事」と「操作の提案」を返す
+            case "AI_CHAT": {
+                const requestId = data.requestId ?? null;
+                const message = typeof data.message === "string" ? data.message.trim().slice(0, 300) : "";
+                if (!message) {
+                    socket.emit("message", { action: "AI_ERROR", requestId, message: "メッセージが空です" });
+                    break;
+                }
+
+                //連打防止は、なりすましできない接続ごとのIDで判定する
+                const limitMessage = checkAiRateLimit(connectedUserId);
+                if (limitMessage) {
+                    socket.emit("message", { action: "AI_ERROR", requestId, message: limitMessage });
+                    break;
+                }
+
+                try {
+                    const result = await askCanvasAi({
+                        message,
+                        chatHistory: data.chatHistory,
+                        canvasState
+                    });
+                    //AIの提案をこの時点で一度チェックして、使える操作だけをクライアントに見せる
+                    const { operations, skipped } = validateOperations(result.operations, canvasState);
+                    socket.emit("message", {
+                        action: "AI_REPLY",
+                        requestId,
+                        reply: result.reply || "（返事がありませんでした）",
+                        operations,
+                        skipped,
+                        provider: result.provider
+                    });
+                    console.log(`[AI] ${userName} への返答 (${result.provider}): 操作${operations.length}件, 除外${skipped}件`);
+                } catch (err) {
+                    console.error("[AI] AI_CHAT 失敗:", err);
+                    socket.emit("message", {
+                        action: "AI_ERROR",
+                        requestId,
+                        message: err.status === 429
+                            ? "いまAIが混み合っています。少し待ってからもう一度試してね"
+                            : "AIとの通信に失敗しました。もう一度試してね"
+                    });
+                }
+                break;
+            }
+
+            //AIの提案をキャンバスに反映する。ロックをかけて1つずつ順番に適用する
+            //履歴には「○○のAI」という名前で残る（Undoは図形1つにつき1回）
+            case "AI_APPLY": {
+                const requestId = data.requestId ?? null;
+                if (isProcessing) {
+                    socket.emit("message", {
+                        action: "AI_APPLY_RESULT", requestId, applied: 0, skipped: 0,
+                        error: "他の操作の処理中です。少し待ってからもう一度押してね"
+                    });
+                    break;
+                }
+
+                //クライアントから来た操作なので、もう一度チェックする（提案の後にキャンバスが変わっている可能性もある）
+                const { operations, skipped } = validateOperations(data.operations, canvasState);
+                if (operations.length === 0) {
+                    socket.emit("message", {
+                        action: "AI_APPLY_RESULT", requestId, applied: 0, skipped,
+                        error: "反映できる操作がありませんでした"
+                    });
+                    break;
+                }
+
+                isProcessing = true; //ロック開始（この間、他の人の ADD/UPDATE/DELETE/UNDO などは弾かれる）
+                const aiUserName = `${userName}のAI`;
+                let applied = 0;
+                try {
+                    let zIndex = getMaxZIndex();
+                    for (const operation of operations) {
+                        //1つ失敗しても残りは続ける
+                        try {
+                            if (operation.op === "add") {
+                                zIndex += 1;
+                                await applyAdd(buildShapeFromAddOperation(operation, zIndex), userId, aiUserName);
+                            } else if (operation.op === "update") {
+                                await applyUpdate(operation.id, operation.changes, userId, aiUserName);
+                            } else if (operation.op === "delete") {
+                                await applyDelete(operation.id, userId, aiUserName);
+                            }
+                            applied++;
+                        } catch (err) {
+                            console.error(`[AI] 操作の適用に失敗 (${operation.op}):`, err.message);
+                        }
+                    }
+                } finally {
+                    isProcessing = false; //ロック解除（途中で例外が出ても必ず外す）
+                    broadcastHistory(); //履歴一覧をまとめて全員に送る
+                }
+
+                socket.emit("message", {
+                    action: "AI_APPLY_RESULT",
+                    requestId,
+                    applied,
+                    skipped: skipped + (operations.length - applied)
+                });
+                console.log(`[AI] ${aiUserName} が ${applied} 件の操作を反映しました`);
+                break;
+            }
+
             case "EXPORT_CODE": {
                 try {
                     const format = data.format; //"html" または "css"
@@ -756,4 +983,3 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
         console.log(`${socket.id} 接続が切断されました`);
     });
 });
-
