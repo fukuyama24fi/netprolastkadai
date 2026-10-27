@@ -911,3 +911,60 @@ body {
   background: transparent;
   color: #777;
 }
+
+/* AIの提案プレビュー（components/ProposalPreview.jsx。見るだけ。本物のキャンバスには影響しない） */
+.ai-preview {
+  margin-bottom: 8px;
+}
+
+.ai-preview-toggle {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.ai-proposal .ai-preview-toggle button {
+  width: auto;
+  flex: 1;
+  padding: 3px 6px;
+
+  background: transparent;
+  color: #5b6b8c;
+  font-size: 11px;
+}
+
+.ai-proposal .ai-preview-toggle button.active {
+  background: white;
+  color: #222;
+  font-weight: bold;
+}
+
+/* プレビューの枠。高さは縦横比から自動で決まり、ここで上限と下限だけ決めている */
+.ai-preview-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 110px;
+  max-height: 260px;
+
+  background: #eef1f6;
+  border: 1px solid #d6deec;
+  border-radius: 6px;
+}
+
+.ai-preview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+
+  font-size: 11px;
+}
+
+.ai-preview-legend-new {
+  color: #4f8cff;
+}
+
+.ai-preview-legend-del {
+  color: #e5484d;
+}

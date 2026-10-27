@@ -1405,8 +1405,9 @@ const App = () => {
           </div>
 
           {/* AIタブならAIチャット、履歴タブなら今までの表示名と編集履歴を出す */}
+          {/* shapes はAIの提案のプレビューを描くのに使う */}
           {sidebarTab === "ai" ? (
-            <AiChatPanel {...aiChat} />
+            <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
           // 履歴タブの中身。タブを固定するため、スクロールはこの中だけで行う
           <div className="history-scroll">

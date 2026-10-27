@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import ProposalPreview from "./ProposalPreview";
+
 /*
  * 右サイドバーの「AIアシスタント」タブの中身
  * 状態は親（App）で useAiChat を呼んで渡してもらう
@@ -9,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
  * 通信（送信・受信）は useAiChat が行う
  *
  * 受け取るもの（props）
+ *   shapes        : 今のキャンバスの図形（プレビューを描くのに使う）
  *   messages      : 会話の一覧（useAiChat から）
  *   isWaiting     : AIの返事待ち中なら true
  *   sendChat      : AIに話しかける関数
@@ -53,10 +56,10 @@ function summarizeOperations(operations) {
 
 /*
  * AIの返事の下に出る「提案カード」
- * 要約と反映ボタン（状態によって表示が変わる）をまとめたもの
+ * 要約・プレビュー・反映ボタン（状態によって表示が変わる）をまとめたもの
  * message.applyStatus の意味は useAiChat.js の messages の説明を参照
  */
-function ProposalCard({ message, onApply, onUndo }) {
+function ProposalCard({ message, onApply, onUndo, shapes }) {
   const { operations, applyStatus, applyResult, skipped, undoError, revertResult } = message;
 
   return (
@@ -65,6 +68,11 @@ function ProposalCard({ message, onApply, onUndo }) {
       <div className="ai-proposal-summary">
         {summarizeOperations(operations)}
       </div>
+
+      {/* 反映する前だけプレビューを出す（反映後・元に戻した後は本物のキャンバスを見ればよいので出さない） */}
+      {(applyStatus === "ready" || applyStatus === "applying" || applyStatus === "failed") && (
+        <ProposalPreview shapes={shapes} operations={operations} />
+      )}
 
       {/* AIが変な提案（存在しない図形の変更など）をして、サーバーが除外した数 */}
       {skipped > 0 && (
@@ -142,6 +150,7 @@ function ProposalCard({ message, onApply, onUndo }) {
 }
 
 export default function AiChatPanel({
+  shapes,
   messages,
   isWaiting,
   sendChat,
@@ -201,6 +210,7 @@ export default function AiChatPanel({
                 message={message}
                 onApply={applyProposal}
                 onUndo={undoProposal}
+                shapes={shapes}
               />
             )}
           </div>
