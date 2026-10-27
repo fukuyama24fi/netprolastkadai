@@ -1276,8 +1276,10 @@ const App = () => {
             </button>
           </div>
 
+          {/* AIタブならAIチャット、履歴タブなら今までの表示名と編集履歴を出す */}
+          {/* shapes はAIの提案のプレビューを描くのに使う */}
           {sidebarTab === "ai" ? (
-            <AiChatPanel {...aiChat} />
+            <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
           <>
           <div className="user-settings">
@@ -1357,6 +1359,7 @@ const App = () => {
           </ul>
           </>
           )}
+          {/* ここまでが履歴タブの中身 */}
         </section>
       </div>
     </div>
