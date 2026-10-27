@@ -56,11 +56,31 @@ function summarizeOperations(operations) {
 
 /*
  * AIの返事の下に出る「提案カード」
- * 要約・プレビュー・反映ボタン（状態によって表示が変わる）をまとめたもの
+ * 要約・プレビュー・今の状態・ボタン（状態によって表示が変わる）をまとめたもの
  * message.applyStatus の意味は useAiChat.js の messages の説明を参照
  */
 function ProposalCard({ message, onApply, onUndo, shapes }) {
-  const { operations, applyStatus, applyResult, skipped, undoError, revertResult } = message;
+  const {
+    operations,
+    applyStatus,
+    applyResult,
+    skipped,
+    undoError,
+    baseShapes,
+    currentHistoryIds,
+    lastAction,
+  } = message;
+
+  // まだ反映していない間は、今のキャンバスに提案を当てはめてプレビューする（他の人の編集も反映される）
+  // 反映した後は、反映した瞬間のキャンバス（baseShapes）を使う
+  // （今のキャンバスを使うと、もうある図形をさらに足した絵になってしまうため）
+  const isBeforeApply =
+    applyStatus === "ready" || applyStatus === "applying" || applyStatus === "failed";
+  const previewShapes = isBeforeApply ? shapes : baseShapes;
+
+  // 「元に戻す」で打ち消す履歴（前のバージョンで保存した会話では反映時の履歴を使う）
+  const undoTargetIds = currentHistoryIds ?? applyResult?.historyIds;
+  const kept = lastAction?.kept ?? 0;
 
   return (
     <div className="ai-proposal">
@@ -69,9 +89,14 @@ function ProposalCard({ message, onApply, onUndo, shapes }) {
         {summarizeOperations(operations)}
       </div>
 
-      {/* 反映する前だけプレビューを出す（反映後・元に戻した後は本物のキャンバスを見ればよいので出さない） */}
-      {(applyStatus === "ready" || applyStatus === "applying" || applyStatus === "failed") && (
-        <ProposalPreview shapes={shapes} operations={operations} />
+      {/* プレビュー。反映した後も、元に戻した後も出し続ける */}
+      {/* 前のバージョンで反映した提案は baseShapes が無いので出さない */}
+      {previewShapes && (
+        <ProposalPreview
+          shapes={previewShapes}
+          operations={operations}
+          beforeLabel={isBeforeApply ? "今のキャンバス" : "反映前"}
+        />
       )}
 
       {/* AIが変な提案（存在しない図形の変更など）をして、サーバーが除外した数 */}
@@ -83,7 +108,7 @@ function ProposalCard({ message, onApply, onUndo, shapes }) {
 
       {/* まだ反映していない */}
       {applyStatus === "ready" && (
-        <button type="button" onClick={() => onApply(message.id)}>
+        <button type="button" onClick={() => onApply(message.id, shapes)}>
           キャンバスに反映
         </button>
       )}
@@ -95,55 +120,64 @@ function ProposalCard({ message, onApply, onUndo, shapes }) {
         </button>
       )}
 
-      {/* 反映できた。この提案の分だけを戻すボタンを出す（1つずつ戻したいときは今まで通り Undo や編集履歴でもできる） */}
-      {applyStatus === "applied" && (
-        <>
-          <div className="ai-proposal-done">
-            {applyResult?.applied}件を反映しました
-            {applyResult?.skipped > 0 && `（${applyResult.skipped}件はできませんでした）`}
-          </div>
-          {/* 戻せなかった理由（他の操作の処理中だった、など） */}
-          {undoError && <div className="ai-proposal-error">{undoError}</div>}
-          {applyResult?.historyIds?.length > 0 && (
-            <button
-              type="button"
-              className="ai-proposal-undo"
-              onClick={() => onUndo(message.id)}
-            >
-              元に戻す
-            </button>
-          )}
-        </>
-      )}
-
-      {/* 元に戻している途中 */}
-      {applyStatus === "undoing" && (
-        <button type="button" className="ai-proposal-undo" disabled>
-          元に戻しています…
-        </button>
-      )}
-
-      {/* 元に戻した。他の人が後から変えていた図形は残しているので、その数も出す */}
-      {applyStatus === "undone" && (
-        <div className="ai-proposal-note">
-          {revertResult?.reverted > 0
-            ? `${revertResult.reverted}件を元に戻しました`
-            : "元に戻せる変更はありませんでした"}
-          {revertResult?.kept > 0 &&
-            `（${revertResult.kept}件は他の人が後から変えていたので、その部分は残しました）`}
-        </div>
-      )}
-
       {/* 反映できなかった（他の人のUndo中でロックされていた、など）。もう一度押せる */}
       {applyStatus === "failed" && (
         <>
           <div className="ai-proposal-error">
             {applyResult?.error || "反映できませんでした"}
           </div>
-          <button type="button" onClick={() => onApply(message.id)}>
+          <button type="button" onClick={() => onApply(message.id, shapes)}>
             もう一度反映
           </button>
         </>
+      )}
+
+      {/* 反映済み：何件反映したか */}
+      {applyStatus === "applied" && (
+        <div className="ai-proposal-done">
+          {lastAction?.type === "redo"
+            ? `${lastAction.count}件を反映し直しました`
+            : `${applyResult?.applied ?? 0}件を反映しました`}
+          {lastAction?.type !== "redo" &&
+            applyResult?.skipped > 0 &&
+            `（${applyResult.skipped}件はできませんでした）`}
+          {lastAction?.type === "redo" &&
+            kept > 0 &&
+            `（${kept}件は他の人が後から変えていたので、その部分は残しました）`}
+        </div>
+      )}
+
+      {/* 元に戻した：何件戻したか。他の人が後から変えていた部分は残しているので、その数も出す */}
+      {applyStatus === "undone" && (
+        <div className="ai-proposal-note">
+          {lastAction?.count ?? 0}件を元に戻しました
+          {kept > 0 &&
+            `（${kept}件は他の人が後から変えていたので、その部分は残しました）`}
+        </div>
+      )}
+
+      {/* 「元に戻す」ができなかった理由（他の操作の処理中だった、など） */}
+      {(applyStatus === "applied" || applyStatus === "undone") && undoError && (
+        <div className="ai-proposal-error">{undoError}</div>
+      )}
+
+      {/* 「元に戻す」ボタン。反映済み ⇔ 元に戻した を押すたびに行き来する */}
+      {(applyStatus === "applied" || applyStatus === "undone") &&
+        undoTargetIds?.length > 0 && (
+        <button
+          type="button"
+          className="ai-proposal-undo"
+          onClick={() => onUndo(message.id)}
+        >
+          元に戻す
+        </button>
+      )}
+
+      {/* 「元に戻す」の途中 */}
+      {applyStatus === "undoing" && (
+        <button type="button" className="ai-proposal-undo" disabled>
+          処理中…
+        </button>
       )}
     </div>
   );

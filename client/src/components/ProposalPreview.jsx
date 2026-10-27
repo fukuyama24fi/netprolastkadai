@@ -6,12 +6,14 @@ import { useMemo, useState } from "react";
  * サーバーにも本物のキャンバスにも何も送らない・何も変えない
  *
  * 受け取るもの（props）
- *   shapes     : 今のキャンバスの図形（useCanvasSocket の shapes）
+ *   shapes     : 提案を当てはめる元のキャンバスの図形
+ *                （反映する前は今のキャンバス、反映した後は反映した瞬間に保存したキャンバス）
  *   operations : AIの提案（形は useAiChat.js の説明を参照）
+ *   beforeLabel: 「反映前」側の切り替えボタンの名前（反映する前は「今のキャンバス」、反映した後は「反映前」）
  *
  * 表示の決まり
  *   「反映後」         : 変わらない図形は薄く、追加・変更される図形は青い点線で囲む、削除される図形は赤い点線の枠だけ
- *   「今のキャンバス」 : 今の状態をそのまま描く
+ *   「今のキャンバス」/「反映前」 : 元のキャンバス（shapes）をそのまま描く
  *   表示範囲は「変わる図形」の周りに絞って拡大する（遠くに図形があっても小さくなりすぎないように）
  *
  * SVG の viewBox を使うと、キャンバスの座標（px）をそのまま使って描いても
@@ -212,8 +214,12 @@ function HighlightBox({ shape }) {
   );
 }
 
-export default function ProposalPreview({ shapes, operations }) {
-  // "after" = 反映後、"before" = 今のキャンバス
+export default function ProposalPreview({
+  shapes,
+  operations,
+  beforeLabel = "今のキャンバス",
+}) {
+  // "after" = 反映後、"before" = 元のキャンバス（ボタンの名前は beforeLabel）
   const [mode, setMode] = useState("after");
 
   // shapes か operations が変わったときだけ計算し直す（useMemo）
@@ -264,7 +270,7 @@ export default function ProposalPreview({ shapes, operations }) {
 
   return (
     <div className="ai-preview">
-      {/* 「反映後 / 今のキャンバス」の切り替えボタン */}
+      {/* 「反映後 / 今のキャンバス（反映前）」の切り替えボタン */}
       <div className="ai-preview-toggle" role="tablist">
         <button
           type="button"
@@ -278,7 +284,7 @@ export default function ProposalPreview({ shapes, operations }) {
           className={!showingAfter ? "active" : ""}
           onClick={() => setMode("before")}
         >
-          今のキャンバス
+          {beforeLabel}
         </button>
       </div>
 
@@ -290,7 +296,7 @@ export default function ProposalPreview({ shapes, operations }) {
         preserveAspectRatio="xMidYMid meet"
         style={{ aspectRatio: `${viewWidth} / ${viewHeight}` }}
         role="img"
-        aria-label={showingAfter ? "反映後のプレビュー" : "今のキャンバス"}
+        aria-label={showingAfter ? "反映後のプレビュー" : beforeLabel}
       >
         {/* 背景（キャンバスの白） */}
         <rect
@@ -323,7 +329,7 @@ export default function ProposalPreview({ shapes, operations }) {
               ))}
           </>
         ) : (
-          // 今のキャンバスをそのまま描く（[...before] でコピーしてから並べ替える）
+          // 元のキャンバスをそのまま描く（[...before] でコピーしてから並べ替える）
           [...before]
             .sort(byZIndex)
             .map((shape) => <PreviewShape key={shape.id} shape={shape} />)

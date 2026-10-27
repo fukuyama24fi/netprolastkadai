@@ -328,9 +328,13 @@ function sameValue(a, b) {
 //  AIが削除した図形 → まだ無ければもう一度追加する
 //
 //historyIds: AI_APPLY で記録された履歴のID（古い順）
-//戻り値: { reverted: 戻した数, kept: 他の人が変えていたので残した数, skipped: もう無い・既にUndo済みなどで何もしなかった数 }
+//戻り値: { reverted: 戻した数, kept: 他の人が変えていたので残した数, skipped: もう無い・既にUndo済みなどで何もしなかった数,
+//          historyIds: 打ち消しで新しく記録された履歴のID（古い順） }
+//
+//打ち消しで記録された historyIds をもう一度この関数に渡すと、打ち消しが打ち消されて反映した状態に戻る
+//（提案カードの「元に戻す」を何度でも行き来できるのはこの仕組み）
 async function revertAiChanges(historyIds, userId, userName) {
-    const result = { reverted: 0, kept: 0, skipped: 0 };
+    const result = { reverted: 0, kept: 0, skipped: 0, historyIds: [] };
 
     //新しい変更から順に打ち消す（同じ図形を何度か変えていても、順番に元に戻るように）
     for (const historyId of [...historyIds].reverse()) {
@@ -355,7 +359,8 @@ async function revertAiChanges(historyIds, userId, userName) {
                     result.kept++;
                     continue;
                 }
-                await applyDelete(entry.objectId, userId, userName);
+                const newEntry = await applyDelete(entry.objectId, userId, userName);
+                result.historyIds.push(newEntry.id);
                 result.reverted++;
             } else if (entry.action === "UPDATE") {
                 if (!current) {
@@ -378,7 +383,8 @@ async function revertAiChanges(historyIds, userId, userName) {
                     result.kept++;
                     continue;
                 }
-                await applyUpdate(entry.objectId, changes, userId, userName);
+                const newEntry = await applyUpdate(entry.objectId, changes, userId, userName);
+                result.historyIds.push(newEntry.id);
                 if (othersChanged) {
                     result.kept++; //一部だけ戻した
                 } else {
@@ -389,7 +395,8 @@ async function revertAiChanges(historyIds, userId, userName) {
                     result.skipped++; //もう誰かが戻している
                     continue;
                 }
-                await applyAdd({ ...entry.before }, userId, userName);
+                const newEntry = await applyAdd({ ...entry.before }, userId, userName);
+                result.historyIds.push(newEntry.id);
                 result.reverted++;
             } else {
                 result.skipped++;
@@ -399,6 +406,8 @@ async function revertAiChanges(historyIds, userId, userName) {
             result.skipped++;
         }
     }
+    //新しい順に処理したので、古い順に並べ直して返す（次に打ち消すときも新しい順に処理できるように）
+    result.historyIds.reverse();
     return result;
 }
 //==================== AI機能用ここまで ====================
@@ -1047,6 +1056,7 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
 
             //AIが反映した変更だけを打ち消す（項目ごとに、AIが変えたままのものだけ戻す）
             //履歴には「○○のAI（取り消し）」として残る
+            //打ち消しをさらに打ち消す（反映した状態に戻す）ときは mode: "redo" が来て、「○○のAI（やり直し）」として残る
             case "AI_REVERT": {
                 const requestId = data.requestId ?? null;
                 const historyIds = Array.isArray(data.historyIds) ? data.historyIds.slice(0, 100) : [];
@@ -1065,10 +1075,11 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 }
 
                 isProcessing = true; //ロック開始
-                let result = { reverted: 0, kept: 0, skipped: 0 };
+                let result = { reverted: 0, kept: 0, skipped: 0, historyIds: [] };
                 let error = null;
+                const label = data.mode === "redo" ? "やり直し" : "取り消し";
                 try {
-                    result = await revertAiChanges(historyIds, userId, `${userName}のAI（取り消し）`);
+                    result = await revertAiChanges(historyIds, userId, `${userName}のAI（${label}）`);
                 } catch (err) {
                     console.error("[AI] AI_REVERT 失敗:", err);
                     error = "元に戻せませんでした";
@@ -1076,7 +1087,7 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                     isProcessing = false; //ロック解除
                     broadcastHistory(); //履歴一覧をまとめて全員に送る
                 }
-                console.log(`[AI] 打ち消し: 戻した${result.reverted}件, 残した${result.kept}件, 何もしなかった${result.skipped}件`);
+                console.log(`[AI] ${label}: 戻した${result.reverted}件, 残した${result.kept}件, 何もしなかった${result.skipped}件`);
                 socket.emit("message", { action: "AI_REVERT_RESULT", requestId, ok: !error, error, ...result });
                 break;
             }
