@@ -604,3 +604,217 @@ body {
   font-size: 13px;
   line-height: 1.5;
 }
+/* ===== 右サイドバー：履歴 / AI タブ ===== */
+.sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 3px;
+
+  background: #eceef1;
+  border-radius: 8px;
+}
+
+.sidebar-tabs button {
+  flex: 1;
+  padding: 7px 4px;
+
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+
+  color: #666;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sidebar-tabs button.active {
+  background: white;
+  color: #222;
+  font-weight: bold;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* タブを切り替えてもキャンバスがずれないよう、サイドバーの幅を固定 */
+.history-section {
+  width: 300px;
+  min-width: 300px;
+}
+
+/* AIタブのときは入力欄を下に固定する */
+.history-section.is-ai {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== AIチャット ===== */
+.ai-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ai-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 92%;
+}
+
+.ai-message-user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.ai-message-assistant,
+.ai-message-error {
+  align-self: flex-start;
+}
+
+.ai-message-bubble {
+  padding: 8px 11px;
+  border-radius: 12px;
+
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ai-message-user .ai-message-bubble {
+  background: #4f8cff;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.ai-message-assistant .ai-message-bubble {
+  background: white;
+  color: #222;
+  border: 1px solid #e2e2e2;
+  border-bottom-left-radius: 4px;
+}
+
+.ai-message-error .ai-message-bubble {
+  background: #fff1f0;
+  color: #b42318;
+  border: 1px solid #f5c2bd;
+}
+
+.ai-thinking {
+  color: #888 !important;
+}
+
+/* AIの提案カード */
+.ai-proposal {
+  margin-top: 6px;
+  padding: 9px 10px;
+
+  background: #f3f7ff;
+  border: 1px solid #c9dafc;
+  border-radius: 10px;
+
+  font-size: 12px;
+  color: #33415c;
+}
+
+.ai-proposal-summary {
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.ai-proposal-note {
+  margin-bottom: 6px;
+  color: #777;
+}
+
+.ai-proposal button {
+  width: 100%;
+  padding: 7px;
+
+  border: none;
+  border-radius: 6px;
+  background: #4f8cff;
+
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ai-proposal button:disabled {
+  background: #a9c3f5;
+  cursor: wait;
+}
+
+.ai-proposal-done {
+  color: #1a7f37;
+}
+
+.ai-proposal-error {
+  margin-bottom: 6px;
+  color: #b42318;
+}
+
+/* 入力欄 */
+.ai-chat-form {
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid #e2e2e2;
+}
+
+.ai-chat-form textarea {
+  width: 100%;
+  padding: 8px;
+
+  border: 1px solid #ccc;
+  border-radius: 8px;
+
+  font-family: inherit;
+  font-size: 13px;
+  resize: none;
+}
+
+.ai-chat-form textarea:focus {
+  outline: none;
+  border-color: #4f8cff;
+}
+
+.ai-chat-form-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ai-chat-form-buttons button {
+  padding: 7px 14px;
+
+  border: none;
+  border-radius: 6px;
+  background: #4f8cff;
+
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ai-chat-form-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-chat-form-buttons .ai-chat-clear {
+  background: transparent;
+  color: #777;
+}

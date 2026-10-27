@@ -13,6 +13,8 @@ import {
   useInteractionHandlers,
 } from "./hooks";
 import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator";
+import { useAiChat } from "./hooks/useAiChat";
+import AiChatPanel from "./components/AiChatPanel";
 import "./App.css";
 
 // ========== 定数 ==========
@@ -55,6 +57,11 @@ const App = () => {
     exportedHtml,
     exportCode,
   } = useCanvasSocket();
+
+  // AIチャット（useCanvasSocket の後に呼ぶ。会話はタブを切り替えても残る）
+  const aiChat = useAiChat();
+  // 右サイドバーのタブ（"history" または "ai"）
+  const [sidebarTab, setSidebarTab] = useState("history");
 
   const { calculateSmartGuides, calculateLayerReorder } =
     useCanvasCalculations();
@@ -113,7 +120,7 @@ const App = () => {
       behavior: "smooth",
       block: "end",
     });
-  }, [history]);
+  }, [history, sidebarTab]); // 履歴タブに戻ったときも一番下へ
 
   /**
    * サーバーからHTMLが返ってきたらダウンロード
@@ -1244,9 +1251,35 @@ const App = () => {
           </div>
         </main>
 
-        <section className="history-section">
-          <h2>編集履歴</h2>
+        <section
+          className={`history-section ${sidebarTab === "ai" ? "is-ai" : ""}`}
+        >
+          {/* 履歴 / AI のタブ */}
+          <div className="sidebar-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "history"}
+              className={sidebarTab === "history" ? "active" : ""}
+              onClick={() => setSidebarTab("history")}
+            >
+              編集履歴
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "ai"}
+              className={sidebarTab === "ai" ? "active" : ""}
+              onClick={() => setSidebarTab("ai")}
+            >
+              AIアシスタント
+            </button>
+          </div>
 
+          {sidebarTab === "ai" ? (
+            <AiChatPanel {...aiChat} />
+          ) : (
+          <>
           <div className="user-settings">
             表示名：
 
@@ -1322,6 +1355,8 @@ const App = () => {
               className="history-end"
             />
           </ul>
+          </>
+          )}
         </section>
       </div>
     </div>
