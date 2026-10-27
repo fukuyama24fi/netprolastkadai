@@ -20,13 +20,18 @@ import socketService from "../services/socketService";
  *   4. サーバーが図形を1つずつ追加・変更・削除して、全員に ADD / UPDATE / DELETE を送る
  *      （キャンバスへの反映は今まで通り useCanvasSocket が受け取って行う）
  *   5. 最後に頼んだ本人にだけ AI_APPLY_RESULT（何件反映できたか）が届く
+ *   6. 「元に戻す」ボタン → undoProposal() → AI_REVERT を送る
+ *      サーバーは、その提案で変わった分だけを「逆の操作」で打ち消す（新しい編集として履歴に残る）
+ *      後から他の人が変えた項目は触らない（AIが変えたままの項目だけ戻す）
  *
  * サーバーとの約束（アクション名）
  *   送信: AI_CHAT  { requestId, message, chatHistory }
  *         AI_APPLY { requestId, operations }
+ *         AI_REVERT { requestId, historyIds }
  *   受信: AI_REPLY        { requestId, reply, operations, skipped, provider }
  *         AI_ERROR        { requestId, message }
- *         AI_APPLY_RESULT { requestId, applied, skipped, error? }
+ *         AI_APPLY_RESULT { requestId, applied, skipped, historyIds, error? }
+ *         AI_REVERT_RESULT { requestId, ok, error?, reverted, kept, skipped }
  *
  * operations（AIの提案）の1件の形
  *   { op: "add", type, x, y, width, height, fill, rotation, ...（textのときは text, fontSize なども） }
@@ -34,14 +39,18 @@ import socketService from "../services/socketService";
  *   { op: "delete", id }
  *   ※ サーバー側でチェック済みの形で届く。add にはまだ id が無い（反映するときにサーバーが付ける）
  *
- * 会話は一人ずつ別。ブラウザ側だけで持ち、サーバーには直近の会話を毎回送る
- * （ページを再読み込みすると会話は消える）
+ * 会話は一人ずつ別。ブラウザの localStorage に保存し、サーバーには直近の会話を毎回送る
+ * （ページを再読み込みしても会話と提案カードは残る。「会話をリセット」で消える）
+ * 保存はブラウザの userId ごと。Pikva の「人」の区別も同じ userId なので、DBに保存しても見える結果は同じ
  */
 
 // サーバーに送る会話の件数（サーバー側でも8件に切っている）
 const MAX_HISTORY_FOR_SERVER = 8;
 // AIの返事をこれ以上待ったら諦める（ミリ秒）
 const REPLY_TIMEOUT_MS = 45000;
+
+// localStorage に保存する会話の最大件数（多すぎると保存できる容量を超えるため）
+const MAX_SAVED_MESSAGES = 60;
 
 // 最初に表示するあいさつ。AIには送らない（sendChat の中で除外している）
 const WELCOME_MESSAGE = {
@@ -51,12 +60,46 @@ const WELCOME_MESSAGE = {
     "こんにちは！作ってほしいデザインや、変えてほしいところを話しかけてね。例：「小さな家を描いて」「青い図形を全部赤にして」",
 };
 
+// localStorage の保存場所の名前（ブラウザの userId ごとに分ける）
+const getStorageKey = () => `pikva-ai-chat:${socketService.getUserId()}`;
+
+// 保存しておいた会話を読み込む。無い・壊れているときは最初のあいさつだけにする
+const loadSavedMessages = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(getStorageKey()) || "null");
+    if (!Array.isArray(saved) || saved.length === 0) {
+      return [WELCOME_MESSAGE];
+    }
+    // サーバーの返事待ちの途中で閉じた提案カードは、結果がわからないので状態を直しておく
+    return saved.map((m) => {
+      if (m.applyStatus === "applying") {
+        return {
+          ...m,
+          applyStatus: "failed",
+          applyResult: { error: "反映できたか確認できませんでした。キャンバスを確認してね" },
+        };
+      }
+      if (m.applyStatus === "undoing") {
+        return {
+          ...m,
+          applyStatus: "applied",
+          undoError: "元に戻せたか確認できませんでした。キャンバスを確認してね",
+        };
+      }
+      return m;
+    });
+  } catch {
+    return [WELCOME_MESSAGE];
+  }
+};
+
 export function useAiChat() {
   // 会話の一覧（画面に表示する吹き出しの元データ）
   // messages の1件の形
   // { id, role: "user" | "assistant" | "error", content,
   //   requestId?, operations?, skipped?,
-  //   applyStatus?: "ready" | "applying" | "applied" | "failed", applyResult? }
+  //   applyStatus?: "ready" | "applying" | "applied" | "failed" | "undoing" | "undone",
+  //   applyResult?, undoError?, revertResult? }
   //
   //   role        : "user" = 自分の発言、"assistant" = AIの返事、"error" = エラー表示（赤い吹き出し）
   //   requestId   : どの AI_CHAT に対する返事か（反映結果と結びつけるのに使う）
@@ -66,7 +109,26 @@ export function useAiChat() {
   //                   "applying" = 反映中（サーバーの返事待ち）
   //                   "applied"  = 反映できた
   //                   "failed"   = 反映できなかった（もう一度ボタンを表示）
-  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  //                   "undoing"  = 元に戻している途中（サーバーの返事待ち）
+  //                   "undone"   = 元に戻した（一部だけ戻した場合も含む）
+  //   applyResult : 反映の結果 { applied: 反映できた数, skipped: できなかった数, historyIds: 記録された履歴のID, error? }
+  //   undoError   : 「元に戻す」ができなかった理由（反映済みのまま、理由を表示する）
+  //   revertResult: 元に戻した結果 { reverted: 戻した数, kept: 他の人が変えていたので残した数, skipped: もう無かった数 }
+  //
+  // 最初は localStorage に保存しておいた会話を読み込む（useState に関数を渡すと、最初の1回だけ実行される）
+  const [messages, setMessages] = useState(loadSavedMessages);
+
+  // 会話が変わるたびに localStorage に保存する（古いものから捨てて最大 MAX_SAVED_MESSAGES 件）
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        getStorageKey(),
+        JSON.stringify(messages.slice(-MAX_SAVED_MESSAGES))
+      );
+    } catch {
+      // 保存できなくても（容量オーバー・プライベートモードなど）チャット自体は使えるので何もしない
+    }
+  }, [messages]);
 
   // AIの返事を待っている間 true（入力欄を無効にして「考え中…」を出す）
   const [isWaiting, setIsWaiting] = useState(false);
@@ -159,9 +221,31 @@ export function useAiChat() {
               applyResult: {
                 applied: data.applied ?? 0,
                 skipped: data.skipped ?? 0,
+                historyIds: Array.isArray(data.historyIds) ? data.historyIds : [],
                 error: data.error,
               },
             }
+          );
+          break;
+        }
+
+        // 「元に戻す」の結果が届いた
+        // 図形そのものは ADD / UPDATE / DELETE で先に届いて useCanvasSocket が描画済み
+        case "AI_REVERT_RESULT": {
+          updateMessage(
+            (m) => m.requestId === data.requestId && m.applyStatus === "undoing",
+            data.ok
+              ? {
+                applyStatus: "undone",
+                undoError: undefined,
+                revertResult: {
+                  reverted: data.reverted ?? 0,
+                  kept: data.kept ?? 0,
+                  skipped: data.skipped ?? 0,
+                },
+              }
+              // 戻せなかったときは「反映済み」に戻して、理由を表示する
+              : { applyStatus: "applied", undoError: data.error || "元に戻せませんでした" }
           );
           break;
         }
@@ -266,7 +350,34 @@ export function useAiChat() {
     [messages, updateMessage]
   );
 
-  // 会話を最初のあいさつだけに戻す（キャンバスには影響しない）
+  /*
+   * AIが反映した変更を、まとめて元に戻す
+   * messageId: 提案カードが付いている吹き出し（AIの返事）の id
+   * サーバーが、この提案で変わった分だけを逆の操作で打ち消す
+   * 打ち消しも新しい編集として履歴に残るので、打ち消しを Undo することもできる
+   */
+  const undoProposal = useCallback(
+    (messageId) => {
+      const target = messages.find((m) => m.id === messageId);
+      const historyIds = target?.applyResult?.historyIds;
+      if (!target || target.applyStatus !== "applied" || !historyIds?.length) {
+        return;
+      }
+
+      // ボタンを「元に戻しています…」にして、結果（AI_REVERT_RESULT）を待つ
+      updateMessage((m) => m.id === messageId, {
+        applyStatus: "undoing",
+        undoError: undefined,
+      });
+      socketService.sendMessage("AI_REVERT", {
+        requestId: target.requestId,
+        historyIds,
+      });
+    },
+    [messages, updateMessage]
+  );
+
+  // 会話を最初のあいさつだけに戻す（キャンバスには影響しない。保存しておいた会話も消える）
   const clearChat = useCallback(() => {
     stopWaiting();
     setMessages([WELCOME_MESSAGE]);
@@ -278,6 +389,7 @@ export function useAiChat() {
     isWaiting,
     sendChat,
     applyProposal,
+    undoProposal,
     clearChat,
   };
 }

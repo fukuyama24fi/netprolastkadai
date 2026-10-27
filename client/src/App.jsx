@@ -37,6 +37,20 @@ const MIN_FONT_SIZE = 8;
 const ROTATION_SNAP_ANGLE = 15;
 const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
+// キャンバスを縮小表示するときの最小の倍率（これより小さくなる場合はスクロールで見る）
+const MIN_CANVAS_SCALE = 0.25;
+// 下のスライダーで選べる倍率の範囲（%）
+const ZOOM_SLIDER_MIN = 25;
+const ZOOM_SLIDER_MAX = 150;
+
+// 縮小表示中のキャンバスの倍率を、画面上の実際の大きさから求める
+// getBoundingClientRect() は縮小後の大きさ、offsetWidth は縮小前の大きさを返すので、その比が倍率になる
+const getCanvasScale = (canvas) => {
+  if (!canvas || !canvas.offsetWidth) {
+    return 1;
+  }
+  return canvas.getBoundingClientRect().width / canvas.offsetWidth;
+};
 
 // ========== コンポーネント ==========
 
@@ -270,14 +284,79 @@ const App = () => {
   const isSelectedText = selectedShape?.type === "text";
   const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
 
+  // ========== キャンバスの縮小表示 ==========
+  // キャンバス全体が左右のサイドバーの間（.main）に収まるように縮小して表示する
+  // 図形の座標（x, y, width, height）は縮小前のまま。見た目だけを transform: scale() で縮める
+  // マウスの位置から座標を計算するところ（ドラッグ・リサイズ）は、この縮小率で割って元の大きさに戻している
+  //
+  // 倍率は2種類あり、どちらを使うかは manualScale で決まる
+  //   fitScale    : 全体が収まる倍率（画面の広さから自動で計算する）
+  //   manualScale : 下のスライダーで選んだ倍率。null のときは「全体表示」（fitScale を使う）
+  const [fitScale, setFitScale] = useState(1);
+  const [manualScale, setManualScale] = useState(null);
+  // 実際にキャンバスに使う倍率
+  const canvasScale = manualScale ?? fitScale;
+
+  useEffect(() => {
+    const main = mainRef.current;
+
+    if (!main) {
+      return;
+    }
+
+    // ドラッグ・リサイズ・回転の途中は縮小率を変えない
+    // （図形を端に動かすとキャンバスが広がって縮小率が下がり、図形がマウスから逃げてしまうため）
+    // 操作が終わると interaction が null になって、ここがもう一度動く
+    if (interaction) {
+      return;
+    }
+
+    const updateScale = () => {
+      // .main の padding とキャンバスの枠線（左右・上下で2px）を除いた、使える広さ
+      const style = window.getComputedStyle(main);
+      const availableWidth =
+        main.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight) -
+        2;
+      const availableHeight =
+        main.clientHeight -
+        parseFloat(style.paddingTop) -
+        parseFloat(style.paddingBottom) -
+        2;
+
+      // 幅と高さの両方が収まる縮小率。拡大はしない（最大1倍）
+      // 小さくなりすぎると操作できないので MIN_CANVAS_SCALE より小さくはしない（そのときはスクロールになる）
+      const nextScale = Math.max(
+        MIN_CANVAS_SCALE,
+        Math.min(1, availableWidth / canvasWidth, availableHeight / canvasHeight)
+      );
+
+      setFitScale(nextScale);
+    };
+
+    updateScale();
+
+    // ウィンドウの大きさが変わったときも合わせ直す
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(main);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [canvasWidth, canvasHeight, interaction]);
+
   // ========== 内部関数 ==========
 
   // ドラッグ移動の処理
    
   const handleDragMove = useCallback(
     (event, canvasRect) => {
-      const newX = event.clientX - canvasRect.left - interaction.offsetX;
-      const newY = event.clientY - canvasRect.top - interaction.offsetY;
+      // マウスの位置（画面上の px）を縮小率で割って、キャンバス上の座標に直す
+      // 縮小率で割ると小数になるので整数に丸める（DBの列が整数でも保存できるように）
+      const scale = getCanvasScale(canvasRef.current);
+      const newX = Math.round((event.clientX - canvasRect.left) / scale - interaction.offsetX);
+      const newY = Math.round((event.clientY - canvasRect.top) / scale - interaction.offsetY);
 
       const movingShape = viewShapesRef.current.find(
         (shape) => shape.id === interaction.id
@@ -308,8 +387,11 @@ const App = () => {
    
   const handleResizeMove = useCallback((event) => {
     setSmartGuides(EMPTY_SMART_GUIDES);
-    const diffX = event.clientX - interaction.startX;
-    const diffY = event.clientY - interaction.startY;
+    // マウスが動いた距離（画面上の px）を縮小率で割って、キャンバス上の大きさに直す
+    // 縮小率で割ると小数になるので整数に丸める（DBの列が整数でも保存できるように）
+    const scale = getCanvasScale(canvasRef.current);
+    const diffX = Math.round((event.clientX - interaction.startX) / scale);
+    const diffY = Math.round((event.clientY - interaction.startY) / scale);
 
     const newWidth = Math.max(
       MIN_SHAPE_SIZE,
@@ -985,16 +1067,31 @@ const App = () => {
           </button>
         </aside>
 
+        {/* キャンバスの表示部分（上：キャンバス、下：拡大縮小のバー） */}
+        <div className="canvas-area">
         <main
           ref={mainRef}
           className="main"
         >
+          {/* 縮小後のキャンバスの大きさの箱 */}
+          {/* transform: scale() は見た目だけを縮め、場所は元の大きさのまま取ってしまうので、 */}
+          {/* この箱で「縮小後の大きさ」だけ場所を取り、はみ出した分は隠す */}
+          <div
+            className="canvas-scaler"
+            style={{
+              width: `${canvasWidth * canvasScale + 2}px`,
+              height: `${canvasHeight * canvasScale + 2}px`,
+            }}
+          >
           <div
             ref={canvasRef}
             className="canvas"
             style={{
               width: `${canvasWidth}px`,
               height: `${canvasHeight}px`,
+              // キャンバス全体を左上を基準に縮小する（図形の座標はそのまま）
+              transform: `scale(${canvasScale})`,
+              transformOrigin: "top left",
             }}
             onMouseDown={(event) => {
               if (
@@ -1249,7 +1346,38 @@ const App = () => {
               );
             })}
           </div>
+          </div>
+          {/* ここまでが縮小後のキャンバスの大きさの箱 */}
         </main>
+
+          {/* 拡大縮小のバー。スライダーで倍率を選ぶと manualScale に入り、「全体表示」で null（自動）に戻る */}
+          <div className="zoom-bar">
+            <button
+              type="button"
+              className={manualScale === null ? "active" : ""}
+              onClick={() => setManualScale(null)}
+              title="キャンバス全体が収まる大きさにする"
+            >
+              全体表示
+            </button>
+            <input
+              type="range"
+              min={ZOOM_SLIDER_MIN}
+              max={ZOOM_SLIDER_MAX}
+              step={5}
+              value={Math.round(canvasScale * 100)}
+              onChange={(event) => {
+                setManualScale(Number(event.target.value) / 100);
+              }}
+              aria-label="キャンバスの表示倍率"
+            />
+            {/* 今の倍率（%） */}
+            <span className="zoom-value">
+              {Math.round(canvasScale * 100)}%
+            </span>
+          </div>
+        </div>
+        {/* ここまでがキャンバスの表示部分 */}
 
         <section
           className={`history-section ${sidebarTab === "ai" ? "is-ai" : ""}`}
@@ -1277,11 +1405,11 @@ const App = () => {
           </div>
 
           {/* AIタブならAIチャット、履歴タブなら今までの表示名と編集履歴を出す */}
-          {/* shapes はAIの提案のプレビューを描くのに使う */}
           {sidebarTab === "ai" ? (
-            <AiChatPanel {...aiChat} shapes={shapes} />
+            <AiChatPanel {...aiChat} />
           ) : (
-          <>
+          // 履歴タブの中身。タブを固定するため、スクロールはこの中だけで行う
+          <div className="history-scroll">
           <div className="user-settings">
             表示名：
 
@@ -1357,7 +1485,7 @@ const App = () => {
               className="history-end"
             />
           </ul>
-          </>
+          </div>
           )}
           {/* ここまでが履歴タブの中身 */}
         </section>

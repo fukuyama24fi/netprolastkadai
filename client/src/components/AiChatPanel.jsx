@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-import ProposalPreview from "./ProposalPreview";
-
 /*
  * 右サイドバーの「AIアシスタント」タブの中身
  * 状態は親（App）で useAiChat を呼んで渡してもらう
@@ -11,11 +9,11 @@ import ProposalPreview from "./ProposalPreview";
  * 通信（送信・受信）は useAiChat が行う
  *
  * 受け取るもの（props）
- *   shapes        : 今のキャンバスの図形（プレビューを描くのに使う）
  *   messages      : 会話の一覧（useAiChat から）
  *   isWaiting     : AIの返事待ち中なら true
  *   sendChat      : AIに話しかける関数
  *   applyProposal : 提案をキャンバスに反映する関数
+ *   undoProposal  : 反映した変更をまとめて元に戻す関数
  *   clearChat     : 会話をリセットする関数
  */
 
@@ -55,11 +53,11 @@ function summarizeOperations(operations) {
 
 /*
  * AIの返事の下に出る「提案カード」
- * 要約・プレビュー・反映ボタン（状態によって表示が変わる）をまとめたもの
+ * 要約と反映ボタン（状態によって表示が変わる）をまとめたもの
  * message.applyStatus の意味は useAiChat.js の messages の説明を参照
  */
-function ProposalCard({ message, onApply, shapes }) {
-  const { operations, applyStatus, applyResult, skipped } = message;
+function ProposalCard({ message, onApply, onUndo }) {
+  const { operations, applyStatus, applyResult, skipped, undoError, revertResult } = message;
 
   return (
     <div className="ai-proposal">
@@ -67,11 +65,6 @@ function ProposalCard({ message, onApply, shapes }) {
       <div className="ai-proposal-summary">
         {summarizeOperations(operations)}
       </div>
-
-      {/* 反映前だけプレビューを出す（反映後は本物のキャンバスに出ているので不要） */}
-      {applyStatus !== "applied" && (
-        <ProposalPreview shapes={shapes} operations={operations} />
-      )}
 
       {/* AIが変な提案（存在しない図形の変更など）をして、サーバーが除外した数 */}
       {skipped > 0 && (
@@ -94,12 +87,42 @@ function ProposalCard({ message, onApply, shapes }) {
         </button>
       )}
 
-      {/* 反映できた */}
+      {/* 反映できた。この提案の分だけを戻すボタンを出す（1つずつ戻したいときは今まで通り Undo や編集履歴でもできる） */}
       {applyStatus === "applied" && (
-        <div className="ai-proposal-done">
-          {applyResult?.applied}件を反映しました
-          {applyResult?.skipped > 0 && `（${applyResult.skipped}件はできませんでした）`}
-          。戻すときは Undo で1つずつ戻せます
+        <>
+          <div className="ai-proposal-done">
+            {applyResult?.applied}件を反映しました
+            {applyResult?.skipped > 0 && `（${applyResult.skipped}件はできませんでした）`}
+          </div>
+          {/* 戻せなかった理由（他の操作の処理中だった、など） */}
+          {undoError && <div className="ai-proposal-error">{undoError}</div>}
+          {applyResult?.historyIds?.length > 0 && (
+            <button
+              type="button"
+              className="ai-proposal-undo"
+              onClick={() => onUndo(message.id)}
+            >
+              元に戻す
+            </button>
+          )}
+        </>
+      )}
+
+      {/* 元に戻している途中 */}
+      {applyStatus === "undoing" && (
+        <button type="button" className="ai-proposal-undo" disabled>
+          元に戻しています…
+        </button>
+      )}
+
+      {/* 元に戻した。他の人が後から変えていた図形は残しているので、その数も出す */}
+      {applyStatus === "undone" && (
+        <div className="ai-proposal-note">
+          {revertResult?.reverted > 0
+            ? `${revertResult.reverted}件を元に戻しました`
+            : "元に戻せる変更はありませんでした"}
+          {revertResult?.kept > 0 &&
+            `（${revertResult.kept}件は他の人が後から変えていたので、その部分は残しました）`}
         </div>
       )}
 
@@ -119,11 +142,11 @@ function ProposalCard({ message, onApply, shapes }) {
 }
 
 export default function AiChatPanel({
-  shapes,
   messages,
   isWaiting,
   sendChat,
   applyProposal,
+  undoProposal,
   clearChat,
 }) {
   // 入力欄の文字
@@ -177,7 +200,7 @@ export default function AiChatPanel({
               <ProposalCard
                 message={message}
                 onApply={applyProposal}
-                shapes={shapes}
+                onUndo={undoProposal}
               />
             )}
           </div>

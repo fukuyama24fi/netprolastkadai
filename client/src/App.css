@@ -185,16 +185,81 @@ body {
   border: 1px solid #ccc;
 }
 
+/* キャンバスの表示部分（上にキャンバス .main、下に拡大縮小のバー .zoom-bar） */
+.canvas-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 拡大縮小のバー（App.jsx の manualScale） */
+.zoom-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  height: 44px;
+  padding: 0 16px;
+  flex-shrink: 0;
+
+  background: white;
+  border-top: 1px solid #ddd;
+  font-size: 13px;
+  color: #444;
+}
+
+.zoom-bar button {
+  padding: 5px 12px;
+
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+
+  color: #222;
+  cursor: pointer;
+}
+
+/* 「全体表示」中はボタンを青くして、今の状態がわかるようにする */
+.zoom-bar button.active {
+  background: #4f8cff;
+  border-color: #4f8cff;
+  color: white;
+}
+
+.zoom-bar input[type="range"] {
+  width: 220px;
+}
+
+/* 倍率の数字。桁数が変わってもバーがガタつかないよう幅を固定する */
+.zoom-value {
+  min-width: 44px;
+  text-align: right;
+}
+
+/* 縮小表示したキャンバスを入れる箱（App.jsx の canvasScale） */
+/* 大きさは App.jsx で「キャンバスの大きさ × 縮小率」にしている */
+.canvas-scaler {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
 /* 右側のサイドバー（編集履歴 / AIアシスタント のタブ） */
 /* タブを切り替えてもキャンバスがずれないよう、幅はどちらのタブでも同じ */
+/* 縦並び（flex）にして、上のタブは固定し、タブの中身（.history-scroll / .ai-chat）だけをスクロールさせる */
 .history-section {
+  display: flex;
+  flex-direction: column;
+
   width: 300px;
   min-width: 300px;
   height: 100%;
   padding: 16px;
 
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow: hidden;
 
   background: #fafafa;
   border-left: 1px solid #ddd;
@@ -638,12 +703,17 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
-/* AIタブのときは入力欄を下に固定する */
-/* サイドバー全体を縦並び（flex）にして、会話の一覧だけがスクロールするようにする */
-.history-section.is-ai {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+/* 履歴タブの中身（表示名と編集履歴）。ここだけがスクロールする */
+/* min-height: 0 が無いと、中身が多いときにはみ出してスクロールできなくなる */
+.history-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* タブは縮ませない（中身が多くても潰れないように） */
+.sidebar-tabs {
+  flex-shrink: 0;
 }
 
 /* ===== AIチャット（components/AiChatPanel.jsx） ===== */
@@ -763,6 +833,20 @@ body {
   cursor: wait;
 }
 
+/* 「元に戻す」ボタン（反映ボタンと区別するため白地にする） */
+.ai-proposal button.ai-proposal-undo {
+  margin-top: 6px;
+  background: white;
+  color: #4f8cff;
+  border: 1px solid #4f8cff;
+}
+
+.ai-proposal button.ai-proposal-undo:disabled {
+  background: white;
+  color: #a9c3f5;
+  border-color: #a9c3f5;
+}
+
 /* 反映できたときの文字 */
 .ai-proposal-done {
   color: #1a7f37;
@@ -826,61 +910,4 @@ body {
 .ai-chat-form-buttons .ai-chat-clear {
   background: transparent;
   color: #777;
-}
-
-/* AIの提案プレビュー（components/ProposalPreview.jsx。見るだけ。本物のキャンバスには影響しない） */
-.ai-preview {
-  margin-bottom: 8px;
-}
-
-.ai-preview-toggle {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 4px;
-}
-
-.ai-proposal .ai-preview-toggle button {
-  width: auto;
-  flex: 1;
-  padding: 3px 6px;
-
-  background: transparent;
-  color: #5b6b8c;
-  font-size: 11px;
-}
-
-.ai-proposal .ai-preview-toggle button.active {
-  background: white;
-  color: #222;
-  font-weight: bold;
-}
-
-/* プレビューの枠。高さは縦横比から自動で決まり、ここで上限と下限だけ決めている */
-.ai-preview-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 110px;
-  max-height: 260px;
-
-  background: #eef1f6;
-  border: 1px solid #d6deec;
-  border-radius: 6px;
-}
-
-.ai-preview-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 4px;
-
-  font-size: 11px;
-}
-
-.ai-preview-legend-new {
-  color: #4f8cff;
-}
-
-.ai-preview-legend-del {
-  color: #e5484d;
 }
