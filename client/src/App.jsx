@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -47,6 +48,18 @@ const ROTATION_SNAP_ANGLE = 15;
 // 1回のマウス移動につき24pxスクロールする。
 const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
+// キャンバスの拡大縮小設定（既存UIに合わせて復元）
+const MIN_CANVAS_SCALE = 0.25;
+const DEFAULT_CANVAS_SCALE = 0.55;
+const ZOOM_SLIDER_MIN = 25;
+const ZOOM_SLIDER_MAX = 150;
+const HISTORY_PAGE_SIZE = 200;
+
+// 見た目の縮小倍率を計算してドラッグ座標を補正する
+const getCanvasScale = (canvas) => {
+  if (!canvas || !canvas.offsetWidth) return 1;
+  return canvas.getBoundingClientRect().width / canvas.offsetWidth;
+};
 
 // ========== コンポーネント ==========
 
@@ -104,6 +117,8 @@ const App = () => {
   const canvasRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
+  const historyScrollRef = useRef(null);
+  const prevHistoryInfoRef = useRef(null);
   const viewShapesRef = useRef([]);
   const interactionRef = useRef(null);
   const didMoveRef = useRef(false);
@@ -128,9 +143,31 @@ const App = () => {
     viewShapesRef.current = shapes;
   }, [shapes]);
 
-  // 履歴が更新されたら一番下まで移動
-   
-  useEffect(() => {
+  // 履歴の追加方向に応じてスクロール位置を保持する
+  useLayoutEffect(() => {
+    const scroller = historyScrollRef.current;
+    const prev = prevHistoryInfoRef.current;
+    const firstId = history[0]?.id;
+    const lastId = history[history.length - 1]?.id;
+    prevHistoryInfoRef.current = {
+      firstId,
+      lastId,
+      scrollHeight: scroller?.scrollHeight ?? 0,
+    };
+    if (!scroller) return;
+    if (!prev || prev.lastId === undefined) {
+      scroller.scrollTop = scroller.scrollHeight;
+      return;
+    }
+    if (prev.lastId === lastId) {
+      if (prev.firstId !== firstId && prev.scrollHeight > 0) {
+        scroller.scrollTop += scroller.scrollHeight - prev.scrollHeight;
+      }
+      return;
+    }
+    const distanceFromBottom =
+      prev.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    if (distanceFromBottom > 80) return;
     historyEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
@@ -311,6 +348,38 @@ const App = () => {
   const selectedShape = getSelectedShape(viewShapes, selectedId);// viewShapesの中から、selectedIdと同じIDの図形を探す。
   const isSelectedText = selectedShape?.type === "text";
   const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
+
+  // ========== キャンバスの縮小表示 ==========
+  const [fitScale, setFitScale] = useState(1);
+  const [manualScale, setManualScale] = useState(DEFAULT_CANVAS_SCALE);
+  const canvasScale = manualScale ?? fitScale;
+
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main || interaction) return;
+
+    const updateScale = () => {
+      const style = window.getComputedStyle(main);
+      const availableWidth = main.clientWidth
+        - parseFloat(style.paddingLeft)
+        - parseFloat(style.paddingRight) - 2;
+      const availableHeight = main.clientHeight
+        - parseFloat(style.paddingTop)
+        - parseFloat(style.paddingBottom) - 2;
+      const nextScale = Math.max(
+        MIN_CANVAS_SCALE,
+        Math.min(1, availableWidth / canvasWidth, availableHeight / canvasHeight)
+      );
+      setFitScale(nextScale);
+    };
+
+    updateScale();
+    // サイズ変更に追従（ブラウザ未対応時でも初期表示は可能）
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(main);
+    return () => observer.disconnect();
+  }, [canvasWidth, canvasHeight, interaction]);
 
   // ========== 内部関数 ==========
 
@@ -1057,10 +1126,20 @@ const App = () => {
           </button>
         </aside>
 
+        {/* キャンバスと倍率変更バーをまとめる */}
+        <div className="canvas-area">
         <main
           ref={mainRef}
           className="main"
         >
+          {/* CSS transform で縮めたキャンバスの表示領域 */}
+          <div
+            className="canvas-scaler"
+            style={{
+              width: `${canvasWidth * canvasScale + 2}px`,
+              height: `${canvasHeight * canvasScale + 2}px`,
+            }}
+          >
           <div
             ref={canvasRef}
             className="canvas"
@@ -1352,10 +1431,57 @@ const App = () => {
           </div>
           {/* ここまでが縮小後のキャンバスの大きさの箱 */}
         </main>
+          <div className="zoom-bar">
+            <button
+              type="button"
+              className={manualScale === null ? "active" : ""}
+              onClick={() => setManualScale(null)}
+              title="キャンバス全体が収まる大きさにする"
+            >
+              全体表示
+            </button>
+            <input
+              type="range"
+              min={ZOOM_SLIDER_MIN}
+              max={ZOOM_SLIDER_MAX}
+              step={5}
+              value={Math.round(canvasScale * 100)}
+              onChange={(event) => setManualScale(Number(event.target.value) / 100)}
+              aria-label="キャンバスの表示倍率"
+            />
+            <span className="zoom-value">{Math.round(canvasScale * 100)}%</span>
+          </div>
+        </div>
 
-        <section className="history-section">
-          <h2>編集履歴</h2>
-
+        <section className={`history-section ${sidebarTab === "ai" ? "is-ai" : ""}`}>
+          <div className="sidebar-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "history"}
+              className={sidebarTab === "history" ? "active" : ""}
+              onClick={() => setSidebarTab("history")}
+            >
+              編集履歴
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "ai"}
+              className={sidebarTab === "ai" ? "active" : ""}
+              onClick={() => setSidebarTab("ai")}
+            >
+              AIアシスタント
+            </button>
+          </div>
+          {sidebarTab === "ai" ? (
+            <AiChatPanel {...aiChat} shapes={shapes} />
+          ) : (
+          <div
+            className="history-scroll"
+            ref={historyScrollRef}
+            onScroll={handleHistoryScroll}
+          >
           <div className="user-settings">
             表示名：
 
