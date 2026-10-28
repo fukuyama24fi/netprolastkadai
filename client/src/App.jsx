@@ -1,16 +1,16 @@
 import {
-  useCallback,
-  useEffect,
-  useRef,
+  useCallback,//関数
+  useEffect,//どこが変わったか
+  useRef,//画面更新せずに値保存
   useState,
 } from "react";
 
-import { useCanvasSocket } from "./services/UseCanvasSocket";
+import { useCanvasSocket } from "./services/UseCanvasSocket";//サーバ通信
 import {
-  useCanvasCalculations,
-  useCanvasState,
-  useFileOperations,
-  useInteractionHandlers,
+  useCanvasCalculations,//重なり
+  useCanvasState,//巣系の状態
+  useFileOperations,//ファイルの生成
+  useInteractionHandlers,//ドラッグ（回転）
 } from "./hooks";
 import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator";
 import "./App.css";
@@ -23,25 +23,34 @@ const TYPE_LABELS = {
   triangle: "三角形",
   text: "テキスト",
 };
-
+// 図形同士が6px以内まで近づいたら、ピタッと揃えるための距離。
+// 現在このファイルでは直接使わず、別Hookへ移動済みの可能性があります。
 const SNAP_THRESHOLD = 6;
+// スマートガイドが1本も出ていない状態。
+// verticalは縦線、horizontalは横線です。
 const EMPTY_SMART_GUIDES = { vertical: [], horizontal: [] };
+// キャンバスの初期幅・初期高さ・余白。
+// 現在はcalculateCanvasSize側で管理しているなら未使用です。
 const DEFAULT_CANVAS_WIDTH = 2000;
 const DEFAULT_CANVAS_HEIGHT = 1400;
 const CANVAS_PADDING = 400;
+// 図形を小さくしても、幅・高さが30px未満にならないようにする。
 const MIN_SHAPE_SIZE = 30;
+// 文字サイズは8px〜200pxの範囲に制限する。
 const MAX_FONT_SIZE = 200;
 const MIN_FONT_SIZE = 8;
+// Shiftを押しながら回転したとき、15度単位でカクッと止める。
 const ROTATION_SNAP_ANGLE = 15;
+// マウスが画面端から80px以内へ来たら、自動スクロールを開始。
+// 1回のマウス移動につき24pxスクロールする。
 const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
-
 // ========== コンポーネント ==========
 
 const App = () => {
   // ========== Hooks から取得 ==========
   const {
-    shapes,
+    shapes,// サーバーから届いた「正式な図形データ」
     history,
     userName,
     setUserName,
@@ -57,43 +66,45 @@ const App = () => {
   } = useCanvasSocket();
 
   const { calculateSmartGuides, calculateLayerReorder } =
-    useCanvasCalculations();
+    useCanvasCalculations();//図形をほかの図形の端・中央へ吸着させる位置を計算.  図形を1つ前・1つ後ろへ動かした結果を計算
   const { updateShapeLocal, getSelectedShape, calculateCanvasSize, clearSelectionState, resetTextEditingState } =
-    useCanvasState();
+    useCanvasState();// 図形・選択状態などの「画面データ管理
   const { handleSaveJsonFile, handleShowHtmlCode, handleShowCssCode, handleCopyCode } =
-    useFileOperations();
+    useFileOperations();//JSON保存、HTML/CSS生成、コピー
   const { startDrag, startResize, startRotate, startTextEditing } =
-    useInteractionHandlers();
+    useInteractionHandlers();//ドラッグ・リサイズ・回転・文字編集の開始
 
   // ========== State ==========
-  const [viewShapes, setViewShapes] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [interaction, setInteraction] = useState(null);
-  const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES);
-  const [editingId, setEditingId] = useState(null);
+  //画面で使う、変化する値を入れる箱
+  const [viewShapes, setViewShapes] = useState([]);// 現在選択中の図形ID
+  const [selectedId, setSelectedId] = useState(null);// 現在の操作情報。
+  const [interaction, setInteraction] = useState(null);// 図形整列用の補助線情報。
+  const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES); // 現在テキスト編集中の図形ID
+  const [editingId, setEditingId] = useState(null); // textareaへ入力中の、まだ確定していない文字。
   const [draftText, setDraftText] = useState("");
-  const [fileName, setFileName] = useState("pikva-canvas");
-  const [codeOutput, setCodeOutput] = useState({
+  const [fileName, setFileName] = useState("pikva-canvas");// 保存・出力時に使うファイル名。
+  const [codeOutput, setCodeOutput] = useState({ // 画面へ表示するHTMLまたはCSSコード。
     type: "",
     content: "",
   });
 
   // ========== Refs ==========
+  //useRef      = 画面を更新せずに使えるメモ帳
   const canvasRef = useRef(null);
-  const mainRef = useRef(null);
-  const historyEndRef = useRef(null);
-  const viewShapesRef = useRef([]);
-  const interactionRef = useRef(null);
-  const didMoveRef = useRef(false);
-  const cancelTextEditRef = useRef(false);
+  const mainRef = useRef(null);// スクロール領域の<main>を指す。自動スクロールで使う。
+  const historyEndRef = useRef(null);// 履歴一覧の一番下を指す。新しい履歴へ自動スクロールする。
+  const viewShapesRef = useRef([]); // 最新のviewShapesを保存する。
+  const interactionRef = useRef(null); // 最新のinteractionを保存する。
+  const didMoveRef = useRef(false); // マウスを押しただけか、本当に移動したかを記録する。
+  const cancelTextEditRef = useRef(false);// Escapeでテキスト編集をキャンセルしたかを記録する。
 
   // ========== Effects ==========
 
   // interaction参照を最新に保つ
    
-  useEffect(() => {
+  useEffect(() => {//何かが変わったときに、自動的に処理を実行します。
     interactionRef.current = interaction;
-  }, [interaction]);
+  }, [interaction]);//監視対象
 
   // サーバーから受け取った図形を画面へ反映
    
@@ -109,7 +120,7 @@ const App = () => {
   // 履歴が更新されたら一番下まで移動
    
   useEffect(() => {
-    historyEndRef.current?.scrollIntoView({
+    historyEndRef.current?.scrollIntoView({//左側が存在するときだけ続きへ進む
       behavior: "smooth",
       block: "end",
     });
@@ -191,6 +202,9 @@ const App = () => {
 
       const canvasRect = canvas.getBoundingClientRect();
 
+      // drag   = 移動
+      // resize = サイズ変更
+      // rotate = 回転
       switch (interaction.mode) {
         case "drag":
           handleDragMove(event, canvasRect);
@@ -209,6 +223,7 @@ const App = () => {
       }
     };
 
+    //マウスを離したら操作を確定します。
     const handleMouseUp = () => {
       setSmartGuides(EMPTY_SMART_GUIDES);
       if (!didMoveRef.current) {
@@ -259,9 +274,9 @@ const App = () => {
 
   // ========== 計算済み値 ==========
 
-  const selectedShape = getSelectedShape(viewShapes, selectedId);
+  const selectedShape = getSelectedShape(viewShapes, selectedId);// viewShapesの中から、selectedIdと同じIDの図形を探す。
   const isSelectedText = selectedShape?.type === "text";
-  const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
+  const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);// 一番右・一番下にある図形が収まるよう、
 
   // ========== 内部関数 ==========
 
@@ -279,15 +294,17 @@ const App = () => {
       if (!movingShape) {
         return;
       }
-
+// Shiftを押している間はスマートガイドを無効にし、
+      // マウスどおりの位置へ自由に動かします。
       if (event.shiftKey) {
         setSmartGuides(EMPTY_SMART_GUIDES);
         updateShapeLocal(interaction.id, { x: newX, y: newY }, setViewShapes, viewShapesRef);
         return;
       }
-
+// Shiftを押していない場合は、
+      // ほかの図形の端・中央へ吸着する位置を計算します。
       const snapResult = calculateSmartGuides(
-        { ...movingShape, x: newX, y: newY },
+        { ...movingShape, x: newX, y: newY },//中身をばらしてコピーする
         viewShapesRef.current
       );
 
@@ -322,7 +339,7 @@ const App = () => {
     );
   }, [interaction, updateShapeLocal]);
 
-  // 回転移動の処理
+  // 回転移動の処理/ラジアン
    
   const handleRotateMove = useCallback((event) => {
     setSmartGuides(EMPTY_SMART_GUIDES);
@@ -338,7 +355,8 @@ const App = () => {
       currentPointerAngle - interaction.startPointerAngle;
 
     let newRotation = interaction.startRotation + angleDifference;
-
+ // Shiftを押している場合は、15度単位に丸めます。
+    // 例: 17度 → 15度、23度 → 30度
     if (event.shiftKey) {
       newRotation = Math.round(newRotation / ROTATION_SNAP_ANGLE) * ROTATION_SNAP_ANGLE;
     }
@@ -381,7 +399,7 @@ const App = () => {
     }
   }, []);
 
-  // 図形追加
+  // 図形追加//サーバーへ円の追加を依頼
    
   const handleAddShape = useCallback(
     (type) => {
@@ -450,13 +468,13 @@ const App = () => {
   // テキスト編集中のキー
    
   const handleTextKeyDown = useCallback((event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {//   編集を確定するため、textareaからフォーカスを外す
       event.preventDefault();
       event.currentTarget.blur();
       return;
     }
 
-    if (event.key === "Escape") {
+    if (event.key === "Escape") {// キャンセル印を付けて、textareaからフォーカスを外す
       event.preventDefault();
       cancelTextEditRef.current = true;
       event.currentTarget.blur();
@@ -589,7 +607,7 @@ const App = () => {
     [selectedId, updateShapeLocal, updateRect]
   );
 
-  // レイヤー移動
+  // 図形の重なり順移動
    
   const moveSelectedLayer = useCallback(
     (direction) => {
@@ -627,7 +645,7 @@ const App = () => {
     moveSelectedLayer("backward");
   }, [moveSelectedLayer]);
 
-  // HTML表示
+  // HTML表示viewShapes
 
   const handleClickShowHtml = useCallback(() => {
     handleShowHtmlCode(viewShapes, fileName, setCodeOutput);
@@ -675,12 +693,16 @@ const App = () => {
 
   return (
     <div className="app">
+      {/* ===== 画面上部のヘッダー =====
+          ロゴ、ファイル名、新規、保存、出力ボタンを置きます。 */}
       <header className="app-header">
         <strong className="app-header-title">
           <img src="/pictuer/2aikon.png" alt="Pikva Icon" />
           Pikva
         </strong>
 
+        {/* ファイル名入力欄。
+            valueは現在値、onChangeは入力されたときの処理です。 */}
         <input
           type="text"
           className="file-name-input"
@@ -699,6 +721,8 @@ const App = () => {
           保存
         </button>
 
+        {/* 現在はonClickがないため、この2つは押しても何も起きません。
+            機能を付けるにはonClick処理が必要です。 */}
         <button type="button">開く</button>
 
         <button type="button">PNG出力</button>
@@ -712,6 +736,8 @@ const App = () => {
         </button>
       </header>
 
+      {/* codeOutput.contentに文字が入っているときだけ、
+          HTML/CSSコード表示パネルを出します。 */}
       {codeOutput.content && (
         <section className="code-output-panel">
           <div className="code-output-header">
@@ -736,6 +762,7 @@ const App = () => {
             </div>
           </div>
 
+          {/* readOnlyなので、ここではコードを表示するだけで編集できません。 */}
           <textarea
             className="code-output-textarea"
             value={codeOutput.content}
@@ -745,7 +772,13 @@ const App = () => {
         </section>
       )}
 
+      {/* ===== ヘッダーより下の本体 =====
+          左: ツール
+          中央: キャンバス
+          右: 編集履歴
+      */}
       <div className="app-body">
+        {/* ===== 左側のツール欄 ===== */}
         <aside className="tool">
           <h1>TOOL</h1>
 
@@ -807,6 +840,7 @@ const App = () => {
             </button>
           </div>
 
+          {/* 図形を選択しているときだけ、回転スライダーを表示します。 */}
           {selectedShape && (
             <label className="rotation-tool">
               回転
@@ -819,6 +853,7 @@ const App = () => {
                   selectedShape.rotation || 0
                 )}
                 onChange={(event) => {
+                  // スライダーを動かしている間は画面だけ更新します。
                   if (!selectedId) {
                     return;
                   }
@@ -835,6 +870,7 @@ const App = () => {
                   );
                 }}
                 onPointerUp={
+                  // マウス・指を離したときにサーバーへ正式保存します。
                   saveSelectedRotation
                 }
                 onBlur={
@@ -851,6 +887,7 @@ const App = () => {
             </label>
           )}
 
+          {/* 選択中の図形を1つ前・1つ後ろへ移動するボタンです。 */}
           {selectedShape && (
             <div className="layer-tools">
               <span>重なり順</span>
@@ -889,6 +926,8 @@ const App = () => {
             />
           </label>
 
+          {/* 選択中図形がテキストの場合だけ、
+              文字サイズ・太字・斜体・大文字ボタンを表示します。 */}
           {isSelectedText && (
             <div className="text-format-tools">
               <label>
@@ -978,10 +1017,15 @@ const App = () => {
           </button>
         </aside>
 
+        {/* ===== 中央のスクロール領域 =====
+            mainRefにより、JavaScriptからスクロール位置を変更できます。 */}
         <main
           ref={mainRef}
           className="main"
         >
+          {/* ===== 実際に図形を置くキャンバス =====
+              canvasRefを使って、位置計算や回転計算に必要な
+              HTML要素の情報を取得します。 */}
           <div
             ref={canvasRef}
             className="canvas"
@@ -990,6 +1034,8 @@ const App = () => {
               height: `${canvasHeight}px`,
             }}
             onMouseDown={(event) => {
+              // キャンバスの空白部分を押したときだけ選択解除します。
+              // 図形を押した場合はevent.targetとcurrentTargetが異なります。
               if (
                 event.target ===
                 event.currentTarget
@@ -999,6 +1045,7 @@ const App = () => {
               }
             }}
           >
+            {/* vertical配列に入ったX座標ごとに縦ガイド線を作ります。 */}
             {smartGuides.vertical.map((guideX) => (
               <div
                 key={`vertical-${guideX}`}
@@ -1009,6 +1056,7 @@ const App = () => {
               />
             ))}
 
+            {/* horizontal配列に入ったY座標ごとに横ガイド線を作ります。 */}
             {smartGuides.horizontal.map((guideY) => (
               <div
                 key={`horizontal-${guideY}`}
@@ -1019,7 +1067,9 @@ const App = () => {
               />
             ))}
 
+            {/* viewShapesの図形数だけ、図形用divを繰り返し作ります。 */}
             {viewShapes.map((shape, shapeIndex) => {
+              // この図形のIDとselectedIdが同じなら選択中。
               const isSelected =
                 shape.id === selectedId;
 
@@ -1033,6 +1083,10 @@ const App = () => {
                 editingId === shape.id;
 
               return (
+                /*
+                 * 1個の図形を表すdivです。
+                 * classNameの例: "shape circle selected"
+                 */
                 <div
                   key={shape.id}
                   className={[
@@ -1048,6 +1102,8 @@ const App = () => {
                   onMouseDown={(
                     event
                   ) => {
+                    // 図形を押したらドラッグ開始。
+                    // ただし文字編集中はドラッグさせません。
                     if (isEditing) {
                       event.stopPropagation();
                       return;
@@ -1063,6 +1119,7 @@ const App = () => {
                   onDoubleClick={(
                     event
                   ) => {
+                    // テキスト図形をダブルクリックすると文字編集を開始します。
                     startTextEditing(
                       event,
                       shape,
@@ -1075,6 +1132,8 @@ const App = () => {
                     );
                   }}
                   style={{
+                    // 図形ごとに違う位置・大きさ・回転・重なり順を
+                    // Reactのstyle属性で直接設定
                     left: `${shape.x}px`,
                     top: `${shape.y}px`,
                     width: `${shape.width}px`,
@@ -1086,11 +1145,15 @@ const App = () => {
                     transformOrigin:
                       "center center",
 
+                    // zIndexが正しい数値ならその値を使用
+                    // 値がなければ、配列内の順番
                     zIndex: Number.isFinite(Number(shape.zIndex))
                       ? Number(shape.zIndex)
                       : shapeIndex,
                   }}
                 >
+                  {/* 図形の見た目本体。
+                      通常図形は背景色、テキストは文字色を設定 */}
                   <div
                     className="shape-body"
                     style={{
@@ -1125,6 +1188,7 @@ const App = () => {
                         : undefined,
                     }}
                   >
+                    {/* テキスト図形かつ編集中ならtextareaを表示 */}
                     {isText &&
                       isEditing ? (
                       <textarea
@@ -1139,6 +1203,7 @@ const App = () => {
                               .value
                           );
                         }}
+                        // 入力欄からフォーカスが外れたら文字を保存
                         onBlur={() => {
                           finishTextEditing(
                             shape.id
@@ -1160,6 +1225,7 @@ const App = () => {
                       />
                     ) : null}
 
+                    {/* テキスト図形で、編集中でなければ通常文字を表示。 */}
                     {isText &&
                       !isEditing ? (
                       <span className="text-value">
@@ -1171,6 +1237,7 @@ const App = () => {
 
                   {!isEditing ? (
                     <>
+                      {/* 図形のサイズを変える*/}
                       <div
                         className="resize-handle"
                         onMouseDown={(
@@ -1188,6 +1255,7 @@ const App = () => {
                         }}
                       />
 
+                      {/* 選択中の図形だけ回転ハンドルを表示 */}
                       {isSelected ? (
                         <div
                           className="rotate-handle"
@@ -1207,6 +1275,7 @@ const App = () => {
                           }}
                         />
                       ) : null}
+                      {/* 選択中かつ文字編集中でない場合図形と逆方向へ回転させ、文字を水平に保ちます。 */}
                       {isSelected && !isEditing ? (
                         <div
                           className="shape-measurement"
@@ -1244,6 +1313,7 @@ const App = () => {
           </div>
         </main>
 
+        {/* ===== 右側の編集履歴欄 ===== */}
         <section className="history-section">
           <h2>編集履歴</h2>
 
@@ -1261,6 +1331,7 @@ const App = () => {
           </div>
 
           <ul className="history-list">
+            {/* 履歴の件数だけ */}
             {history.map(
               (historyItem) => (
                 <li
@@ -1271,11 +1342,14 @@ const App = () => {
                     }`
                   }
                   onClick={() => {
+                    // 履歴をクリックすると、その時点へジャンプ。
                     handleHistoryClick(
                       historyItem
                     );
                   }}
                   style={{
+                    // ドラッグなどの操作中は半透明にし、
+                    // クリック不可に見えるカーソルへ
                     cursor: interaction
                       ? "not-allowed"
                       : "pointer",
@@ -1317,6 +1391,7 @@ const App = () => {
               )
             )}
 
+            {/* history更新時にここまで自動スクロールします。 */}
             <li
               ref={historyEndRef}
               className="history-end"
