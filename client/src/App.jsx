@@ -1,7 +1,7 @@
 import {
-  useCallback,//関数
-  useEffect,//どこが変わったか
-  useRef,//画面更新せずに値保存
+  useCallback,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -13,6 +13,8 @@ import {
   useInteractionHandlers,//ドラッグ（回転）
 } from "./hooks";
 import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator";
+import { useAiChat } from "./hooks/useAiChat";
+import AiChatPanel from "./components/AiChatPanel";
 import "./App.css";
 
 // ========== 定数 ==========
@@ -45,6 +47,7 @@ const ROTATION_SNAP_ANGLE = 15;
 // 1回のマウス移動につき24pxスクロールする。
 const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
+
 // ========== コンポーネント ==========
 
 const App = () => {
@@ -52,6 +55,9 @@ const App = () => {
   const {
     shapes,// サーバーから届いた「正式な図形データ」
     history,
+    hasOlderHistory, // まだ古い履歴がサーバーにあるか
+    isLoadingOlderHistory, // 古い履歴を読み込み中か
+    loadOlderHistory, // さらに古い履歴を200件読み込む
     userName,
     setUserName,
     addShape,
@@ -64,6 +70,11 @@ const App = () => {
     exportedHtml,
     exportCode,
   } = useCanvasSocket();
+
+  // AIチャット（useCanvasSocket の後に呼ぶ。会話はタブを切り替えても残る）
+  const aiChat = useAiChat();
+  // 右サイドバーのタブ（"history" または "ai"）
+  const [sidebarTab, setSidebarTab] = useState("history");
 
   const { calculateSmartGuides, calculateLayerReorder } =
     useCanvasCalculations();//図形をほかの図形の端・中央へ吸着させる位置を計算.  図形を1つ前・1つ後ろへ動かした結果を計算
@@ -91,12 +102,12 @@ const App = () => {
   // ========== Refs ==========
   //useRef      = 画面を更新せずに使えるメモ帳
   const canvasRef = useRef(null);
-  const mainRef = useRef(null);// スクロール領域の<main>を指す。自動スクロールで使う。
-  const historyEndRef = useRef(null);// 履歴一覧の一番下を指す。新しい履歴へ自動スクロールする。
-  const viewShapesRef = useRef([]); // 最新のviewShapesを保存する。
-  const interactionRef = useRef(null); // 最新のinteractionを保存する。
-  const didMoveRef = useRef(false); // マウスを押しただけか、本当に移動したかを記録する。
-  const cancelTextEditRef = useRef(false);// Escapeでテキスト編集をキャンセルしたかを記録する。
+  const mainRef = useRef(null);
+  const historyEndRef = useRef(null);
+  const viewShapesRef = useRef([]);
+  const interactionRef = useRef(null);
+  const didMoveRef = useRef(false);
+  const cancelTextEditRef = useRef(false);
 
   // ========== Effects ==========
 
@@ -120,11 +131,34 @@ const App = () => {
   // 履歴が更新されたら一番下まで移動
    
   useEffect(() => {
-    historyEndRef.current?.scrollIntoView({//左側が存在するときだけ続きへ進む
+    historyEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
   }, [history]);
+
+  // 編集履歴を一番上の近くまでスクロールしたら、さらに古い履歴を読み込む
+  const handleHistoryScroll = useCallback(
+    (event) => {
+      if (event.currentTarget.scrollTop < 40) {
+        loadOlderHistory();
+      }
+    },
+    [loadOlderHistory]
+  );
+
+  // 履歴タブを開いたときは、アニメーションせずに最初から一番下（最新の履歴）を表示する
+  // useLayoutEffect は画面に描かれる前に動くので、上から流れていく様子が見えない
+  useLayoutEffect(() => {
+    const scroller = historyScrollRef.current;
+    if (sidebarTab === "history" && scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+      // 古い履歴を付け足すときの位置合わせに使う高さも、今の高さにしておく
+      if (prevHistoryInfoRef.current) {
+        prevHistoryInfoRef.current.scrollHeight = scroller.scrollHeight;
+      }
+    }
+  }, [sidebarTab]);
 
   /**
    * サーバーからHTMLが返ってきたらダウンロード
@@ -276,7 +310,7 @@ const App = () => {
 
   const selectedShape = getSelectedShape(viewShapes, selectedId);// viewShapesの中から、selectedIdと同じIDの図形を探す。
   const isSelectedText = selectedShape?.type === "text";
-  const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);// 一番右・一番下にある図形が収まるよう、
+  const { canvasWidth, canvasHeight } = calculateCanvasSize(viewShapes);
 
   // ========== 内部関数 ==========
 
@@ -284,8 +318,11 @@ const App = () => {
    
   const handleDragMove = useCallback(
     (event, canvasRect) => {
-      const newX = event.clientX - canvasRect.left - interaction.offsetX;
-      const newY = event.clientY - canvasRect.top - interaction.offsetY;
+      // マウスの位置（画面上の px）を縮小率で割って、キャンバス上の座標に直す
+      // 縮小率で割ると小数になるので整数に丸める（DBの列が整数でも保存できるように）
+      const scale = getCanvasScale(canvasRef.current);
+      const newX = Math.round((event.clientX - canvasRect.left) / scale - interaction.offsetX);
+      const newY = Math.round((event.clientY - canvasRect.top) / scale - interaction.offsetY);
 
       const movingShape = viewShapesRef.current.find(
         (shape) => shape.id === interaction.id
@@ -318,8 +355,11 @@ const App = () => {
    
   const handleResizeMove = useCallback((event) => {
     setSmartGuides(EMPTY_SMART_GUIDES);
-    const diffX = event.clientX - interaction.startX;
-    const diffY = event.clientY - interaction.startY;
+    // マウスが動いた距離（画面上の px）を縮小率で割って、キャンバス上の大きさに直す
+    // 縮小率で割ると小数になるので整数に丸める（DBの列が整数でも保存できるように）
+    const scale = getCanvasScale(canvasRef.current);
+    const diffX = Math.round((event.clientX - interaction.startX) / scale);
+    const diffY = Math.round((event.clientY - interaction.startY) / scale);
 
     const newWidth = Math.max(
       MIN_SHAPE_SIZE,
@@ -1017,21 +1057,19 @@ const App = () => {
           </button>
         </aside>
 
-        {/* ===== 中央のスクロール領域 =====
-            mainRefにより、JavaScriptからスクロール位置を変更できます。 */}
         <main
           ref={mainRef}
           className="main"
         >
-          {/* ===== 実際に図形を置くキャンバス =====
-              canvasRefを使って、位置計算や回転計算に必要な
-              HTML要素の情報を取得します。 */}
           <div
             ref={canvasRef}
             className="canvas"
             style={{
               width: `${canvasWidth}px`,
               height: `${canvasHeight}px`,
+              // キャンバス全体を左上を基準に縮小する（図形の座標はそのまま）
+              transform: `scale(${canvasScale})`,
+              transformOrigin: "top left",
             }}
             onMouseDown={(event) => {
               // キャンバスの空白部分を押したときだけ選択解除します。
@@ -1311,9 +1349,10 @@ const App = () => {
               );
             })}
           </div>
+          </div>
+          {/* ここまでが縮小後のキャンバスの大きさの箱 */}
         </main>
 
-        {/* ===== 右側の編集履歴欄 ===== */}
         <section className="history-section">
           <h2>編集履歴</h2>
 
@@ -1329,6 +1368,15 @@ const App = () => {
               }}
             />
           </div>
+
+          {/* 一番上までスクロールして、古い履歴を読み込んでいる間 */}
+          {isLoadingOlderHistory && (
+            <div className="history-older-status">古い履歴を読み込み中…</div>
+          )}
+          {/* さかのぼって、一番古い履歴まで来たとき */}
+          {!hasOlderHistory && !isLoadingOlderHistory && history.length > HISTORY_PAGE_SIZE && (
+            <div className="history-older-status">これより前の履歴はありません</div>
+          )}
 
           <ul className="history-list">
             {/* 履歴の件数だけ */}
@@ -1397,6 +1445,9 @@ const App = () => {
               className="history-end"
             />
           </ul>
+          </div>
+          )}
+          {/* ここまでが履歴タブの中身 */}
         </section>
       </div>
     </div>

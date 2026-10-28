@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -9,6 +10,28 @@ import socketService from "./socketService";
 export function useCanvasSocket() {
   const [shapes, setShapes] = useState([]);
   const [history, setHistory] = useState([]);
+
+  /*
+   * 古い履歴の読み込み
+   * サーバーは最新200件だけを送ってくる。編集履歴を一番上までスクロールしたら、
+   * loadOlderHistory() でさらに古い200件をもらって、上に付け足す
+   * 読み込んだ古い履歴はこのブラウザのメモリにだけあるので、再読み込みすると最新200件に戻る
+   */
+  // まだ古い履歴がサーバーにあるか
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  // 古い履歴を読み込み中か（二重に頼まないため）
+  const [isLoadingOlderHistory, setIsLoadingOlderHistory] = useState(false);
+  // loadOlderHistory や受信処理の中で最新の値を読むための ref
+  const historyRef = useRef(history);
+  const hasOlderHistoryRef = useRef(false);
+  const isLoadingOlderHistoryRef = useRef(false);
+
+  // 描画が終わるたびに ref を最新の値にしておく（描画中に ref を書き換えるのは React では避ける）
+  useEffect(() => {
+    historyRef.current = history;
+    hasOlderHistoryRef.current = hasOlderHistory;
+    isLoadingOlderHistoryRef.current = isLoadingOlderHistory;
+  }, [history, hasOlderHistory, isLoadingOlderHistory]);
 
   const [userName, setUserNameState] =
     useState(
@@ -74,11 +97,53 @@ export function useCanvasSocket() {
         }
 
         case "HISTORY_RESPONSE": {
-          setHistory(
-            Array.isArray(data.history)
-              ? data.history
-              : []
-          );
+          const incoming = Array.isArray(data.history)
+            ? data.history
+            : [];
+
+          /*
+           * サーバーは編集のたびに最新200件を送り直してくる
+           * そのまま置き換えると、さかのぼって読み込んだ古い履歴が消えてしまうので、
+           * 届いた中で一番古い履歴よりさらに古いものは、手元に残してつなげる
+           * （古い履歴は後から書き換わらないので、そのまま残して大丈夫）
+           */
+          const oldestIncomingId = incoming.length > 0
+            ? Number(incoming[0].id)
+            : -Infinity;
+          const isOlder = (item) => Number(item.id) < oldestIncomingId;
+
+          // 古い履歴を手元に持っていないときだけ、サーバーの「まだ古いのがあるか」をそのまま使う
+          // （持っているときは、最後に読み込んだときの結果のままにする）
+          if (!historyRef.current.some(isOlder)) {
+            setHasOlderHistory(Boolean(data.hasOlder));
+          }
+
+          setHistory((prev) => [
+            ...prev.filter(isOlder),
+            ...incoming,
+          ]);
+
+          break;
+        }
+
+        // さかのぼって頼んだ古い履歴が届いた。今の一覧の上に付け足す
+        case "HISTORY_OLDER_RESPONSE": {
+          const older = Array.isArray(data.history)
+            ? data.history
+            : [];
+
+          setHistory((prev) => {
+            const oldestId = prev.length > 0
+              ? Number(prev[0].id)
+              : Infinity;
+            // 念のため、今の一覧より古いものだけを付け足す（重複を防ぐ）
+            const toAdd = older.filter(
+              (item) => Number(item.id) < oldestId
+            );
+            return [...toAdd, ...prev];
+          });
+          setHasOlderHistory(Boolean(data.hasOlder));
+          setIsLoadingOlderHistory(false);
 
           break;
         }
@@ -509,9 +574,37 @@ export function useCanvasSocket() {
     []
   );
 
+  /*
+   * さらに古い履歴を200件読み込む（編集履歴を一番上までスクロールしたときに呼ぶ）
+   * 結果は HISTORY_OLDER_RESPONSE で届く
+   */
+  const loadOlderHistory = useCallback(() => {
+    const current = historyRef.current;
+    if (
+      !hasOlderHistoryRef.current ||
+      isLoadingOlderHistoryRef.current ||
+      current.length === 0
+    ) {
+      return;
+    }
+
+    setIsLoadingOlderHistory(true);
+    isLoadingOlderHistoryRef.current = true;
+
+    socketService.sendMessage(
+      "HISTORY_OLDER",
+      {
+        beforeId: current[0].id, // 今の一覧で一番古い履歴。これより古いものをもらう
+      }
+    );
+  }, []);
+
 return {
   shapes,
   history,
+  hasOlderHistory,
+  isLoadingOlderHistory,
+  loadOlderHistory,
   userName,
   setUserName,
   addShape,
@@ -525,4 +618,4 @@ return {
   exportCode,
   exportedFile,
 };
-}
+}
