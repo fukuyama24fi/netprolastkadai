@@ -1,0 +1,125 @@
+.pikva-comments {
+  border: 1px solid #d6dfeb;
+  border-radius: 12px;
+  padding: 12px;
+  margin: 12px 0 16px;
+  background: #fff;
+  color: #233149;
+}
+.pikva-comments__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 14px;
+}
+.pikva-comments__heading span {
+  color: #a44343;
+  font-size: 11px;
+}
+.pikva-comments__heading span.is-connected { color: #27644b; }
+.pikva-comments__help {
+  margin: 7px 0 10px;
+  color: #59667a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.pikva-comments__list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 194px;
+  min-height: 50px;
+  overflow-y: auto;
+  padding: 4px 3px;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+.pikva-comments__empty {
+  margin: 9px 0;
+  font-size: 12px;
+  color: #67758a;
+}
+.pikva-comments__item {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #f1f5fa;
+}
+.pikva-comments__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.pikva-comments__meta b { overflow-wrap: anywhere; }
+.pikva-comments__meta time {
+  color: #5f6d81;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.pikva-comments__item p {
+  margin: 3px 0 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.pikva-comments__form {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pikva-comments__form label { font-size: 12px; }
+.pikva-comments__form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid #a7b6ca;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: #162135;
+  background: #fff;
+}
+.pikva-comments__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pikva-comments__actions small { font-size: 11px; color: #68758b; }
+.pikva-comments__actions button,
+.pikva-comments__error button {
+  border: none;
+  border-radius: 7px;
+  padding: 7px 13px;
+  min-height: 34px;
+  background: #3169df;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+}
+.pikva-comments__actions button:disabled {
+  background: #a2aec2;
+  cursor: not-allowed;
+}
+.pikva-comments__error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a12b34;
+  overflow-wrap: anywhere;
+}
+.pikva-comments__error button { display: block; margin-top: 5px; }
+
+/* 履歴リストを押し下げすぎないようにコメント欄の高さを制限する。 */
+.pikva-comments {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 56%;
+  overflow-y: auto;
+}
