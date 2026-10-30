@@ -977,3 +977,22 @@ body {
 .ai-preview-legend-del {
   color: #e5484d;
 }
+/* ========================================
+   PNG画像出力中のスタイル
+======================================== */
+
+/* 選択中の図形の枠線を非表示 */
+.canvas.png-exporting .shape.selected {
+  outline: none !important;
+}
+
+/* テキスト編集用の枠線を非表示 */
+.canvas.png-exporting .shape.text.editing {
+  outline: none !important;
+}
+
+/* PNG出力ボタンを無効化したとき */
+.app-header button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

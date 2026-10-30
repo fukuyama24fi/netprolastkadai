@@ -6,6 +6,8 @@ import {
   useState,
 } from "react";
 
+import { toBlob } from "html-to-image";
+
 import { useCanvasSocket } from "./services/UseCanvasSocket";//サーバ通信
 import {
   useCanvasCalculations,//重なり
@@ -109,6 +111,7 @@ const App = () => {
   const [editingId, setEditingId] = useState(null); // textareaへ入力中の、まだ確定していない文字。
   const [draftText, setDraftText] = useState("");
   const [fileName, setFileName] = useState("pikva-canvas");// 保存・出力時に使うファイル名。
+　const [pngExporting, setPngExporting] = useState(false);// PNG画像を出力しているかどうか
   const [codeOutput, setCodeOutput] = useState({ // 画面へ表示するHTMLまたはCSSコード。
     type: "",
     content: "",
@@ -788,6 +791,152 @@ const openFileInputRef = useRef(null);
   }, [viewShapes, fileName, handleSaveJsonFile]);
 
   // ========================================
+// PNG画像出力機能
+// ========================================
+
+const handleClickExportPng = useCallback(async () => {
+
+  // 現在のキャンバスを取得
+  const canvas = canvasRef.current;
+
+  if (!canvas || pngExporting) {
+    return;
+  }
+
+  // テキスト編集中は出力しない
+  if (editingId !== null) {
+    window.alert(
+      "テキストの編集を確定してからPNG出力してください。"
+    );
+    return;
+  }
+
+  // ドラッグ・回転・リサイズ中は出力しない
+  if (interactionRef.current) {
+    window.alert(
+      "図形の操作が終わってからPNG出力してください。"
+    );
+    return;
+  }
+
+  // 出力開始
+  setPngExporting(true);
+
+  // 編集用の選択枠を一時的に非表示
+  canvas.classList.add("png-exporting");
+
+  try {
+
+    // フォントの読み込みを待つ
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+
+    // キャンバス全体をPNGに変換
+    const blob = await toBlob(canvas, {
+
+      // PNGの背景色
+      backgroundColor: "#ffffff",
+
+      // キャンバス全体のサイズ
+      width: Math.ceil(canvasWidth),
+      height: Math.ceil(canvasHeight),
+
+      // 表示倍率に関係なく元の解像度で保存
+      pixelRatio: 1,
+
+      // 画面上の縮小・拡大を解除して画像化
+      style: {
+        transform: "none",
+        transformOrigin: "top left",
+        border: "none",
+      },
+
+      // 編集用の部品はPNGに含めない
+      filter: (element) => {
+
+        if (!element.classList) {
+          return true;
+        }
+
+        const excludedClasses = [
+          "smart-guide",
+          "resize-handle",
+          "rotate-handle",
+          "shape-measurement",
+        ];
+
+        return !excludedClasses.some(
+          (className) =>
+            element.classList.contains(className)
+        );
+      },
+    });
+
+    // 画像生成失敗
+    if (!blob) {
+      throw new Error("PNG画像を生成できませんでした。");
+    }
+
+    // ファイル名を取得
+    const safeFileName = (
+      fileName.trim() || "pikva-canvas"
+    )
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .replace(/\.+$/, "")
+      .slice(0, 100) || "pikva-canvas";
+
+    // PNG画像のダウンロードURLを作成
+    const downloadUrl = URL.createObjectURL(blob);
+
+    // ダウンロード用のリンク
+    const link = document.createElement("a");
+
+    link.href = downloadUrl;
+    link.download = `${safeFileName}.png`;
+
+    document.body.appendChild(link);
+
+    // ダウンロード実行
+    link.click();
+
+    // リンク削除
+    link.remove();
+
+    // ダウンロード開始後にURLを解放
+    setTimeout(() => {
+      URL.revokeObjectURL(downloadUrl);
+    }, 30000);
+
+    console.log("PNG出力成功:", link.download);
+
+  } catch (error) {
+
+    console.error("PNG出力エラー:", error);
+
+    window.alert(
+      "PNG画像の出力に失敗しました。\n" +
+      (error?.message || "不明なエラー")
+    );
+
+  } finally {
+
+    // 編集用の選択枠を元に戻す
+    canvas.classList.remove("png-exporting");
+
+    // 出力終了
+    setPngExporting(false);
+  }
+
+}, [
+  canvasWidth,
+  canvasHeight,
+  fileName,
+  editingId,
+  pngExporting,
+]);
+
+  // ========================================
 // JSONファイル読み込み機能
 // ========================================
 
@@ -945,7 +1094,14 @@ const handleOpenFileChange = async (event) => {
         </button>
         
 
-        <button type="button">PNG出力</button>
+        {/* PNG画像出力ボタン */}
+        <button
+          type="button"
+          onClick={handleClickExportPng}
+          disabled={pngExporting}
+        >
+          {pngExporting ? "PNG作成中..." : "PNG出力"}
+        </button>
 
         <button type="button" onClick={handleClickShowHtml}>
           HTML出力
