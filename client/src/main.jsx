@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import StartScreen from "./components/StartScreen.jsx";
@@ -11,6 +11,13 @@ import "./MobileSupport.css";
 function Root() {
   const [screen, setScreen] = useState("start");
   const [mobilePanel, setMobilePanel] = useState("canvas");
+
+  // App の「選択したテキストを編集」を押したら、覆っているツールを閉じる。
+  useEffect(() => {
+    const showCanvas = () => setMobilePanel("canvas");
+    window.addEventListener("pikva:show-canvas", showCanvas);
+    return () => window.removeEventListener("pikva:show-canvas", showCanvas);
+  }, []);
 
   const returnToStart = () => {
     socketService.disconnect();

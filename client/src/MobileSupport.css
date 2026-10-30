@@ -1,11 +1,9 @@
 /*
- * Pikva mobile landscape v4 — replace MobileSupport.css entirely.
+ * Pikva mobile landscape v5 — replace MobileSupport.css entirely.
  * Only CSS + main.jsx; no changes to App.jsx, Socket.IO, PostgreSQL.
  * Mobile rules are scoped; desktop App.css is unchanged.
  */
 .pikva-editor-shell__mobile-tabs { display: none; }
-/* 以前のApp.jsxに追加された古いタブを二重表示しない */
-.mobile-panel-tabs { display: none !important; }
 
 /* Landscape phones / emulated phones. Portrait phone: readable fallback. */
 @media (max-width: 1150px) and (orientation: landscape),
@@ -367,4 +365,57 @@
     border-radius: 0;
     box-shadow: none;
   }
+}
+
+/* ================================================================
+   v5: Touch/Pen interaction — pointermove is implemented in App.jsx.
+   Native scroll is kept on the canvas background, NOT on the shapes.
+   CSS rules are scoped to coarse pointers to preserve desktop mouse UX.
+   ================================================================ */
+@media (pointer: coarse) and (max-width: 1150px) {
+  .pikva-editor-shell__app .canvas { touch-action: pan-x pan-y; }
+  .pikva-editor-shell__app .canvas .shape:not(.editing),
+  .pikva-editor-shell__app .canvas .resize-handle,
+  .pikva-editor-shell__app .canvas .rotate-handle {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .pikva-editor-shell__app .canvas .shape.editing .text-editor {
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  /* Keep tap targets legible even while canvas is scaled to fit. */
+  .pikva-editor-shell__app .canvas .shape.selected .resize-handle {
+    width: 26px;
+    height: 26px;
+    right: -13px;
+    bottom: -13px;
+    transform: scale(var(--pikva-touch-handle-scale, 1));
+    transform-origin: center;
+    border-radius: 5px;
+    background: #fff;
+    z-index: 60;
+  }
+  .pikva-editor-shell__app .canvas .shape.selected .rotate-handle {
+    width: 26px;
+    height: 26px;
+    top: calc(-39px * var(--pikva-touch-handle-scale, 1));
+    transform: translateX(-50%) scale(var(--pikva-touch-handle-scale, 1));
+    transform-origin: center;
+    background: #fff;
+    z-index: 60;
+  }
+  /* At small phone zoom the connector tends to cover the shape; hide it. */
+  .pikva-editor-shell__app .canvas .shape.selected .rotate-handle::after { display: none; }
+  .pikva-editor-shell__app .mobile-text-edit,
+  .pikva-editor-shell__app .mobile-shape-numbers { display: flex; }
+  .pikva-editor-shell__app .mobile-text-edit {
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+  }
+  .pikva-editor-shell__app .mobile-shape-numbers { flex-direction: column; }
 }

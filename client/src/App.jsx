@@ -20,7 +20,9 @@ import HistoryComments from "./components/HistoryComments";
 import { exportCanvasPng } from "./utils/canvasPngExport";
 import "./components/LocalBorderRadiusTool.css";
 import "./App.css";
+import "./MobileSupport.css";
 
+// Pikva mobile touch v5: Pointer Events, single navigation, touch-action CSS.
 // ========== 定数 ==========
 
 const TYPE_LABELS = {
@@ -82,9 +84,9 @@ const ROTATION_SNAP_ANGLE = 15;
 const AUTO_SCROLL_EDGE_SIZE = 80;
 const AUTO_SCROLL_SPEED = 24;
 // キャンバスの拡大縮小設定（既存UIに合わせて復元）
-const MIN_CANVAS_SCALE = 0.25;
+const MIN_CANVAS_SCALE = 0.10;
 const DEFAULT_CANVAS_SCALE = 0.55;
-const ZOOM_SLIDER_MIN = 25;
+const ZOOM_SLIDER_MIN = 10;
 const ZOOM_SLIDER_MAX = 150;
 const HISTORY_PAGE_SIZE = 200;
 
@@ -167,7 +169,25 @@ const App = () => {
   const viewShapesRef = useRef([]);
   const interactionRef = useRef(null);
   const didMoveRef = useRef(false);
+  const activePointerIdRef = useRef(null);
+  const pointerStartRef = useRef(null);
   const cancelTextEditRef = useRef(false);
+
+  // マウスとタッチを共通のPointer Eventsで扱う。1本指/左クリックだけ開始する。
+  const beginPointerAction = (event) => {
+    if (event.isPrimary === false || event.button !== 0) return false;
+    if (activePointerIdRef.current !== null) return false;
+    didMoveRef.current = false;
+    activePointerIdRef.current = event.pointerId;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    // キャンバスから指が離れても移動と終了を受け取れるようにする
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // 非対応ブラウザではwindow側のイベントリスナーで処理
+    }
+    return true;
+  };
 
   // ========== Effects ==========
 
@@ -296,97 +316,97 @@ const App = () => {
     };
   }, [selectedId]);
 
-  // 移動・リサイズ・回転中のマウス操作
-   
+  // マウス・タッチ・ペンの移動/終了を共通処理する
   useEffect(() => {
-    if (!interaction) {
-      return;
-    }
+    if (!interaction) return;
 
-    const handleMouseMove = (event) => {
+    const pointerMatches = (event) =>
+      event.pointerId === activePointerIdRef.current;
+
+    const handlePointerMove = (event) => {
+      if (!pointerMatches(event)) return;
       const canvas = canvasRef.current;
+      if (!canvas) return;
 
-      if (!canvas) {
-        return;
+      // スマホでタップしたときの数pxの揺れはドラッグに数えない
+      const start = pointerStartRef.current;
+      if (!didMoveRef.current && start) {
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
+          return;
+        }
       }
-
       didMoveRef.current = true;
 
-      if (interaction.mode !== "rotate") {
+      // タッチ操作では自動スクロールせず、図形のない場所で通常スクロールする
+      if (event.pointerType !== "touch" && interaction.mode !== "rotate") {
         autoScrollMain(event);
       }
 
       const canvasRect = canvas.getBoundingClientRect();
-
-      // drag   = 移動
-      // resize = サイズ変更
-      // rotate = 回転
       switch (interaction.mode) {
         case "drag":
           handleDragMove(event, canvasRect);
           break;
-
         case "resize":
           handleResizeMove(event);
           break;
-
         case "rotate":
           handleRotateMove(event);
           break;
-
         default:
           break;
       }
     };
 
-    //マウスを離したら操作を確定します。
-    const handleMouseUp = () => {
+    const clearPointer = () => {
+      activePointerIdRef.current = null;
+      pointerStartRef.current = null;
+      didMoveRef.current = false;
       setSmartGuides(EMPTY_SMART_GUIDES);
-      if (!didMoveRef.current) {
-        setInteraction(null);
-        return;
-      }
-
-      const targetShape = viewShapesRef.current.find(
-        (shape) => shape.id === interaction.id
-      );
-
-      if (!targetShape) {
-        setInteraction(null);
-        return;
-      }
-
-      if (interaction.mode === "drag") {
-        updateRect(targetShape.id, {
-          x: targetShape.x,
-          y: targetShape.y,
-        });
-      }
-
-      if (interaction.mode === "resize") {
-        updateRect(targetShape.id, {
-          width: targetShape.width,
-          height: targetShape.height,
-        });
-      }
-
-      if (interaction.mode === "rotate") {
-        updateRect(targetShape.id, {
-          rotation: targetShape.rotation || 0,
-        });
-      }
-
       setInteraction(null);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+    const handlePointerUp = (event) => {
+      if (!pointerMatches(event)) return;
+      if (didMoveRef.current) {
+        const targetShape = viewShapesRef.current.find(
+          (shape) => shape.id === interaction.id
+        );
+        if (targetShape) {
+          if (interaction.mode === "drag") {
+            updateRect(targetShape.id, { x: targetShape.x, y: targetShape.y });
+          } else if (interaction.mode === "resize") {
+            updateRect(targetShape.id, {
+              width: targetShape.width,
+              height: targetShape.height,
+            });
+          } else if (interaction.mode === "rotate") {
+            updateRect(targetShape.id, { rotation: targetShape.rotation || 0 });
+          }
+        }
+      }
+      clearPointer();
     };
-  }, [interaction]);
+
+    const handlePointerCancel = (event) => {
+      // pointercancelは値を確定させない（ページの中断・着信など）
+      if (event?.pointerId != null && !pointerMatches(event)) return;
+      viewShapesRef.current = shapes;
+      setViewShapes(shapes);
+      clearPointer();
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
+    window.addEventListener("blur", handlePointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+      window.removeEventListener("blur", handlePointerCancel);
+    };
+  }, [interaction, shapes]);
 
   // ========== 計算済み値 ==========
 
@@ -396,7 +416,12 @@ const App = () => {
 
   // ========== キャンバスの縮小表示 ==========
   const [fitScale, setFitScale] = useState(1);
-  const [manualScale, setManualScale] = useState(DEFAULT_CANVAS_SCALE);
+  const [manualScale, setManualScale] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse) and (max-width: 1150px)").matches
+      ? null
+      : DEFAULT_CANVAS_SCALE
+  );
   const canvasScale = manualScale ?? fitScale;
 
   useEffect(() => {
@@ -1057,11 +1082,11 @@ const App = () => {
             </button>
 
             {[
-              ["diamond", "ひし形を追加"],
-              ["pentagon", "五角形を追加"],
-              ["hexagon", "六角形を追加"],
-              ["star", "星形を追加"],
-              ["arrow", "矢印を追加"],
+              ["diamond", "◆ ひし形"],
+              ["pentagon", "⬟ 五角形"],
+              ["hexagon", "⬢ 六角形"],
+              ["star", "★ 星形"],
+              ["arrow", "➜ 矢印"],
             ].map(([type, label]) => (
               <button type="button" key={type} onClick={() => handleAddShape(type)}>
                 {label}
@@ -1076,6 +1101,55 @@ const App = () => {
               テキストを追加
             </button>
           </div>
+
+          {/* スマホではダブルタップの代わりにボタンから文字を編集できる */}
+          {isSelectedText && (
+            <button type="button" className="mobile-text-edit"
+              onClick={(event) => {
+                startTextEditing(event, selectedShape, {
+                  setSelectedId, setInteraction, setDraftText, setEditingId,
+                });
+                // 親の1つだけのモバイルタブでキャンバスに戻す
+                window.dispatchEvent(new Event("pikva:show-canvas"));
+              }}>
+              選択したテキストを編集
+            </button>
+          )}
+
+          {/* スマホで小さいハンドルを使わずに位置・大きさを調整 */}
+          {selectedShape && (
+            <div className="mobile-shape-numbers">
+              <strong>位置・大きさ（選択中）</strong>
+              <div className="mobile-shape-numbers__grid">
+                {[
+                  ["x", "X座標"], ["y", "Y座標"],
+                  ["width", "幅"], ["height", "高さ"],
+                ].map(([field, label]) => (
+                  <label key={`${selectedId}-${field}`}>
+                    {label}
+                    <input type="number" inputMode="numeric"
+                      min={field === "width" || field === "height" ? MIN_SHAPE_SIZE : -100000}
+                      max={100000}
+                      key={`${selectedId}-${field}-${selectedShape[field]}`}
+                      defaultValue={Math.round(Number(selectedShape[field]) || 0)}
+                      onBlur={(event) => {
+                        if (!selectedId) return;
+                        const value = Number(event.currentTarget.value);
+                        if (!Number.isFinite(value)) return;
+                        const next = Math.max(
+                          field === "width" || field === "height" ? MIN_SHAPE_SIZE : -100000,
+                          Math.min(100000, Math.round(value))
+                        );
+                        if (next !== selectedShape[field]) {
+                          updateSelectedShape({ [field]: next });
+                        }
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 図形を選択しているときだけ、回転スライダーを表示します。 */}
           {selectedShape && (
@@ -1165,7 +1239,7 @@ const App = () => {
 
           {selectedShape && ["rect", "rounded"].includes(selectedShape.type) && (
             <div className="pikva-local-radius">
-              <label htmlFor="pikva-radius-slider">角丸</label>
+              <label htmlFor="pikva-radius-slider">角丸（このブラウザだけ）</label>
               <input
                 id="pikva-radius-slider"
                 type="range"
@@ -1300,8 +1374,10 @@ const App = () => {
               // キャンバス全体を左上を基準に縮小する（図形の座標はそのまま）
               transform: `scale(${canvasScale})`,
               transformOrigin: "top left",
+              // タッチ操作ハンドルの見かけの大きさを縮小率に左右されにくくする
+              "--pikva-touch-handle-scale": Math.max(1, Math.min(10, 1 / canvasScale)),
             }}
-            onMouseDown={(event) => {
+            onPointerDown={(event) => {
               // キャンバスの空白部分を押したときだけ選択解除します。
               // 図形を押した場合はevent.targetとcurrentTargetが異なります。
               if (
@@ -1367,7 +1443,7 @@ const App = () => {
                       ? "editing"
                       : "",
                   ].join(" ")}
-                  onMouseDown={(
+                  onPointerDown={(
                     event
                   ) => {
                     // 図形を押したらドラッグ開始。
@@ -1377,6 +1453,7 @@ const App = () => {
                       return;
                     }
 
+                    if (!beginPointerAction(event)) return;
                     startDrag(event, shape, {
                       canvasRef,
                       setInteraction,
@@ -1513,9 +1590,10 @@ const App = () => {
                       {/* 図形のサイズを変える*/}
                       <div
                         className="resize-handle"
-                        onMouseDown={(
+                        onPointerDown={(
                           event
                         ) => {
+                          if (!beginPointerAction(event)) return;
                           startResize(
                             event,
                             shape,
@@ -1533,9 +1611,10 @@ const App = () => {
                         <div
                           className="rotate-handle"
                           title="ドラッグして回転"
-                          onMouseDown={(
+                          onPointerDown={(
                             event
                           ) => {
+                            if (!beginPointerAction(event)) return;
                             startRotate(
                               event,
                               shape,
