@@ -22,7 +22,7 @@ function Root() {
     <div className="pikva-editor-shell">
       <nav className="pikva-editor-shell__nav" aria-label="画面の切り替え">
         <button type="button" onClick={returnToStart}>
-          ← 開始画面へ戻る
+          開始画面
         </button>
         <span className="pikva-editor-shell__label">共通編集画面</span>
       </nav>

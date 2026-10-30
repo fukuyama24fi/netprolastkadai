@@ -43,7 +43,7 @@ export default function StartScreen({ onEnter }) {
 
         <form className="pikva-start__form" onSubmit={handleSubmit}>
           <label className="pikva-start__label" htmlFor="pikva-user-name">
-            あなたの表示名 <span>（30文字以内）</span>
+            表示名 <span>（30文字以内）</span>
           </label>
           <input
             id="pikva-user-name"
@@ -72,17 +72,9 @@ export default function StartScreen({ onEnter }) {
             type="submit"
             disabled={!name.trim()}
           >
-            この名前で共通画面へ <span aria-hidden="true">→</span>
+            製作開始 <span aria-hidden="true">→</span>
           </button>
         </form>
-
-        <div className="pikva-start__details">
-          <strong>共同編集とコメント</strong>
-          <p>
-            同じキャンバスを編集しながら、編集履歴タブでコメントを共有できます。
-            保存ボタンでは図形をJSONファイルとしてダウンロードできます。
-          </p>
-        </div>
       </section>
     </main>
   );
