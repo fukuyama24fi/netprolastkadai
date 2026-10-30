@@ -1057,11 +1057,11 @@ const App = () => {
             </button>
 
             {[
-              ["diamond", "◆ ひし形"],
-              ["pentagon", "⬟ 五角形"],
-              ["hexagon", "⬢ 六角形"],
-              ["star", "★ 星形"],
-              ["arrow", "➜ 矢印"],
+              ["diamond", "ひし形を追加"],
+              ["pentagon", "五角形を追加"],
+              ["hexagon", "六角形を追加"],
+              ["star", "星形を追加"],
+              ["arrow", "矢印を追加"],
             ].map(([type, label]) => (
               <button type="button" key={type} onClick={() => handleAddShape(type)}>
                 {label}
@@ -1165,7 +1165,7 @@ const App = () => {
 
           {selectedShape && ["rect", "rounded"].includes(selectedShape.type) && (
             <div className="pikva-local-radius">
-              <label htmlFor="pikva-radius-slider">角丸（このブラウザだけ）</label>
+              <label htmlFor="pikva-radius-slider">角丸</label>
               <input
                 id="pikva-radius-slider"
                 type="range"

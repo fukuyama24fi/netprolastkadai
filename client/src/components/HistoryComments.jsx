@@ -125,7 +125,7 @@ export default function HistoryComments({ userName }) {
   return (
     <section className="pikva-comments" aria-label="共同コメント">
       <div className="pikva-comments__heading">
-        <strong>💬 共同コメント</strong>
+        <strong>会話一覧</strong>
         <span className={connected ? "is-connected" : ""}>
           {connected ? "接続中" : "未接続"}
         </span>
@@ -154,7 +154,7 @@ export default function HistoryComments({ userName }) {
           id="pikva-comment-text"
           value={message}
           onChange={(event) => setMessage(event.target.value)}
-          placeholder="例：このボタンの位置を変えたいです！"
+          placeholder="例：もう少しマイクラっぽくしてもいいんじゃない？"
           maxLength={MAX_COMMENT_LENGTH}
           rows={2}
         />
