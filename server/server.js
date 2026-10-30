@@ -4,11 +4,10 @@ import http from 'http'; //HTTPサーバー機能（Socket.ioで必要）
 import cors from 'cors'; //corsは別のドメインからの勝手なアクセスをブロックする
 import pkg from 'pg'; //Neon接続用
 import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライブラリ
-import { randomUUID } from "node:crypto";
+
 
 dotenv.config(); //.envファイルを適用
 import { pool } from './config/db.js'; //データベース接続用
-import { initializeHistoryComments, attachHistoryComments } from './historyComments.js';
 import { generateHTMLCode, generateCSSCode } from './utils/codeGenerator.js'; //コード抽出用
 import { askCanvasAi } from './ai/aiService.js'; //AIチャット用
 import { validateOperations, buildShapeFromAddOperation } from './ai/validateOperations.js'; //AIの操作の検証用
@@ -440,16 +439,6 @@ async function startServer() {
         //await:DBから返事が来るまで、次の行に進まない
         await pool.query("SELECT 1");
         console.log("データベース接続成功");
-        // 共同コメント専用テーブル。編集履歴/Undoとは独立させる。
-        try {
-            await initializeHistoryComments(pool);
-            console.log("共同コメント用テーブル確認完了");
-        } catch (error) {
-            // キャンバスなど既存機能は引き続き使用できるようにする。
-            // コメント送信エラーの際は、まずこのログを確認すること。
-            console.error("共同コメント用テーブル初期化失敗:", error);
-        }
-
 
         //初期化完了を待ってからサーバー起動
         //canvas_objects を読み込む
@@ -534,13 +523,6 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
     });
 
     sendHistory(socket);
-    // 接続ユーザーごとにコメント一覧/送信用Socket.IOイベントを登録する。
-    attachHistoryComments(
-        socket, io, pool,
-        () => userNames[connectedUserId] || connectedUserName,
-        connectedUserId
-    );
-
 
     //メッセージ受信とaction分岐
     //クライアントからの操作を受信したときの処理（実際の受信は下の socket.on("message") で行う）
@@ -1193,266 +1175,6 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
                 return;
         }
     };
-
-    // ========================================
-// JSONファイル読み込み
-// ========================================
-
-socket.on("canvas:import", (payload, reply) => {
-    if (typeof reply !== "function") return;
-
-    // ほかの編集操作と順番に処理する
-    void runInQueue(async () => {
-        let db = null;
-        let committed = false;
-
-        try {
-            const input = payload?.objects;
-
-            // データ形式の検証
-            if (!Array.isArray(input) || input.length > 200) {
-                throw new Error("図形データが不正です。");
-            }
-
-            const allowedTypes = [
-  "rect",
-  "circle",
-  "triangle",
-  "text",
-  "rounded",
-  "diamond",
-  "pentagon",
-  "hexagon",
-  "star",
-  "arrow",
-];
-
-            // 保存ファイルの図形を検証・整形
-            const nextCanvas = input.map((obj, index) => {
-                if (
-                    !obj ||
-                    !allowedTypes.includes(obj.type)
-                ) {
-                    throw new Error("不正な図形が含まれています。");
-                }
-
-                const fields = [
-                    "x", "y", "width", "height"
-                ];
-
-                if (!fields.every(key =>
-                    typeof obj[key] === "number" &&
-                    Number.isFinite(obj[key]) &&
-                    Math.abs(obj[key]) <= 1000000
-                )) {
-                    throw new Error("図形の座標が不正です。");
-                }
-
-                if (obj.width < 1 || obj.height < 1) {
-                    throw new Error("図形のサイズが不正です。");
-                }
-
-                return {
-                    id: randomUUID(),
-                    type: obj.type,
-                    x: Math.round(obj.x),
-                    y: Math.round(obj.y),
-                    width: Math.round(obj.width),
-                    height: Math.round(obj.height),
-
-                    fill:
-                        typeof obj.fill === "string" &&
-                        /^#[0-9a-fA-F]{6}$/.test(obj.fill)
-                            ? obj.fill
-                            : "#4f8cff",
-
-                    text:
-                        typeof obj.text === "string"
-                            ? obj.text.slice(0, 10000)
-                            : null,
-
-                    rotation:
-                        Number.isFinite(obj.rotation)
-                            ? Math.round(obj.rotation)
-                            : 0,
-
-                    fontSize:
-                        Number.isFinite(obj.fontSize)
-                            ? Math.max(
-                                8,
-                                Math.min(200, Math.round(obj.fontSize))
-                              )
-                            : null,
-
-                    fontWeight:
-                        obj.fontWeight === "bold"
-                            ? "bold"
-                            : "normal",
-
-                    fontStyle:
-                        obj.fontStyle === "italic"
-                            ? "italic"
-                            : "normal",
-
-                    textTransform:
-                        obj.textTransform === "uppercase"
-                            ? "uppercase"
-                            : "none",
-
-                    zIndex:
-                        Number.isFinite(obj.zIndex)
-                            ? Math.round(obj.zIndex)
-                            : index
-                };
-            });
-
-            // 現在の履歴ポインターより後ろの履歴
-            const keptHistory =
-                historyList.slice(0, historyPointer + 1);
-
-            const removedIds = historyList
-                .slice(historyPointer + 1)
-                .map(item => item.id);
-
-            // 同じDB接続でトランザクションを実行
-            db = await pool.connect();
-            await db.query("BEGIN");
-
-            if (removedIds.length > 0) {
-                await db.query(
-                    "DELETE FROM edit_history WHERE id = ANY($1)",
-                    [removedIds]
-                );
-            }
-
-            // 現在のキャンバスをDBから消去
-            await db.query("DELETE FROM canvas_objects");
-
-            const newHistory = [];
-
-            // 編集履歴保存
-            const record = async (
-                action, objectId, before, after
-            ) => {
-                const result = await db.query(
-                    `INSERT INTO edit_history
-                     (action, object_id, user_id, user_name, before, after)
-                     VALUES ($1, $2, $3, $4, $5, $6)
-                     RETURNING
-                       id,
-                       action,
-                       object_id AS "objectId",
-                       user_id AS "userId",
-                       user_name AS "userName",
-                       before,
-                       after,
-                       created_at AS "createdAt"`,
-                    [
-                        action,
-                        objectId,
-                        connectedUserId,
-                        userNames[connectedUserId] || connectedUserName,
-                        before === null
-                            ? null
-                            : JSON.stringify(before),
-                        after === null
-                            ? null
-                            : JSON.stringify(after)
-                    ]
-                );
-
-                newHistory.push(result.rows[0]);
-            };
-
-            // 読み込み前の状態を履歴に保存
-            await record(
-                "CLEAR",
-                null,
-                canvasState.map(obj => ({ ...obj })),
-                null
-            );
-
-            // JSON内の図形をDBへ登録
-            for (const obj of nextCanvas) {
-                await db.query(
-                    `INSERT INTO canvas_objects
-                     (id, type, x, y, width, height,
-                      fill, text, rotation, font_size,
-                      font_weight, font_style, text_transform)
-                     VALUES
-                     ($1, $2, $3, $4, $5, $6,
-                      $7, $8, $9, $10, $11, $12, $13)`,
-                    [
-                        obj.id,
-                        obj.type,
-                        obj.x,
-                        obj.y,
-                        obj.width,
-                        obj.height,
-                        obj.fill,
-                        obj.text,
-                        obj.rotation,
-                        obj.fontSize,
-                        obj.fontWeight,
-                        obj.fontStyle,
-                        obj.textTransform
-                    ]
-                );
-
-                await record(
-                    "ADD",
-                    obj.id,
-                    null,
-                    obj
-                );
-            }
-
-            // すべて成功した場合だけ確定
-            await db.query("COMMIT");
-            committed = true;
-
-            // サーバー内のキャンバスを更新
-            canvasState = nextCanvas;
-
-            // 編集履歴を更新
-            historyList = [
-                ...keptHistory,
-                ...newHistory
-            ];
-
-            historyPointer = historyList.length - 1;
-
-            // 参加者全員に新しいキャンバスを送信
-            io.emit("message", {
-                action: "INIT",
-                objects: canvasState
-            });
-
-            broadcastHistory();
-
-            // 読み込み成功
-            reply({
-                ok: true,
-                count: nextCanvas.length
-            });
-
-        } catch (error) {
-            if (db && !committed) {
-                await db.query("ROLLBACK").catch(() => {});
-            }
-
-            console.error("JSON読み込み失敗:", error);
-
-            reply({
-                ok: false,
-                error: error.message
-            });
-
-        } finally {
-            if (db) db.release();
-        }
-    });
-});
 
     //メッセージ受信
     //キャンバスを書き換える操作は順番待ちの列に並べ、それ以外（AIへの質問・名前変更・コード出力）はすぐ処理する

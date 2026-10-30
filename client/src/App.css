@@ -1001,10 +1001,59 @@ body {
    新しい図形スタイル
 ======================================== */
 
-/* ① 角丸四角形 */
-.shape.rounded .shape-body {
-  border-radius: 18px;
+/* ========================================
+   角丸調整ツール
+======================================== */
+
+.border-radius-tool {
+  display: flex;
+  flex-direction: column;
+
+  gap: 8px;
+  padding: 10px;
+
+  background: #333;
+  border-radius: 6px;
+
+  color: white;
+  font-size: 13px;
 }
+
+/* スライダー */
+.border-radius-tool input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+
+/* 数値表示 */
+.border-radius-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  gap: 6px;
+}
+
+/* 数値入力 */
+.border-radius-value input[type="number"] {
+  width: 70px;
+
+  padding: 5px;
+
+  background: #fff;
+  color: #222;
+
+  border: 1px solid #ccc;
+  border-radius: 4px;
+
+  text-align: right;
+}
+
+/* 単位 */
+.border-radius-value span {
+  color: #ddd;
+}
+
 
 /* ② ひし形 */
 .shape.diamond .shape-body {

@@ -21,6 +21,35 @@ import AiChatPanel from "./components/AiChatPanel";
 import HistoryComments from "./components/HistoryComments";
 import "./App.css";
 
+// ========================================
+// 図形の角丸設定
+// ========================================
+
+const MAX_BORDER_RADIUS = 100;
+const BORDER_RADIUS_STORAGE_KEY = "pikva-border-radius-local";
+
+// 図形から角丸の大きさを取得する
+const getBorderRadius = (shape) => {
+  if (!shape) return 0;
+
+  if (Number.isFinite(shape.borderRadius)) {
+    return Math.max(
+      0,
+      Math.min(
+        MAX_BORDER_RADIUS,
+        Math.round(shape.borderRadius)
+      )
+    );
+  }
+
+  // 以前作成した角丸四角形との互換性
+  if (shape.type === "rounded") {
+    return 18;
+  }
+
+  return 0;
+};
+
 // ========== 定数 ==========
 
 const TYPE_LABELS = {
@@ -113,6 +142,35 @@ const App = () => {
   // ========== State ==========
   //画面で使う、変化する値を入れる箱
   const [viewShapes, setViewShapes] = useState([]);// 現在選択中の図形ID
+  // ========================================
+// ブラウザ内の角丸設定
+// ========================================
+
+const [localBorderRadii, setLocalBorderRadii] = useState(() => {
+  try {
+    const saved = localStorage.getItem(
+      BORDER_RADIUS_STORAGE_KEY
+    );
+
+    if (!saved) return {};
+
+    const parsed = JSON.parse(saved);
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return {};
+    }
+
+    return parsed;
+
+  } catch (error) {
+    console.error("角丸設定の読み込み失敗:", error);
+    return {};
+  }
+});
   const [selectedId, setSelectedId] = useState(null);// 現在の操作情報。
   const [interaction, setInteraction] = useState(null);// 図形整列用の補助線情報。
   const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES); // 現在テキスト編集中の図形ID
@@ -129,7 +187,7 @@ const App = () => {
   //useRef      = 画面を更新せずに使えるメモ帳
   const canvasRef = useRef(null);
   // JSONファイルを選択するinputを操作する
-const openFileInputRef = useRef(null);
+  const openFileInputRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
   const historyScrollRef = useRef(null);
@@ -149,14 +207,51 @@ const openFileInputRef = useRef(null);
 
   // サーバーから受け取った図形を画面へ反映
    
-  useEffect(() => {
-    if (interactionRef.current) {
-      return;
+  // ========================================
+// サーバーの図形とローカル角丸設定を統合
+// ========================================
+
+useEffect(() => {
+
+  if (interactionRef.current) {
+    return;
+  }
+
+  const mergedShapes = shapes.map((shape) => {
+
+    // この図形に保存された角丸設定を取得
+    const savedRadius = localBorderRadii[shape.id];
+
+    // 四角形以外はそのまま
+    if (
+      shape.type !== "rect" &&
+      shape.type !== "rounded"
+    ) {
+      return shape;
     }
 
-    setViewShapes(shapes);
-    viewShapesRef.current = shapes;
-  }, [shapes]);
+    // 角丸設定が存在しない場合もそのまま
+    if (
+      !Number.isInteger(savedRadius) ||
+      savedRadius < 0 ||
+      savedRadius > 100
+    ) {
+      return shape;
+    }
+
+    // ローカルの角丸設定を上書き
+    return {
+      ...shape,
+      borderRadius: savedRadius,
+    };
+
+  });
+
+  setViewShapes(mergedShapes);
+
+  viewShapesRef.current = mergedShapes;
+
+}, [shapes, localBorderRadii]);
 
   // 履歴の追加方向に応じてスクロール位置を保持する
   useLayoutEffect(() => {
@@ -731,6 +826,71 @@ const openFileInputRef = useRef(null);
     [selectedId, updateShapeLocal, updateRect]
   );
 
+  // ========================================
+// 角丸のリアルタイム変更
+// ========================================
+
+// ========================================
+// 角丸を変更（ローカル保存版）
+// ========================================
+
+const handleBorderRadiusChange = useCallback(
+  (event) => {
+
+    if (!selectedId) return;
+
+    const value = Number(event.target.value);
+
+    if (!Number.isFinite(value)) return;
+
+    // 0〜100pxに制限
+    const radius = Math.max(
+      0,
+      Math.min(
+        MAX_BORDER_RADIUS,
+        Math.round(value)
+      )
+    );
+
+    // ローカルの設定を更新
+    setLocalBorderRadii((prev) => ({
+      ...prev,
+      [selectedId]: radius,
+    }));
+
+    // 画面上の図形もすぐ更新
+    updateShapeLocal(
+      selectedId,
+      { borderRadius: radius },
+      setViewShapes,
+      viewShapesRef
+    );
+
+  },
+  [selectedId, updateShapeLocal]
+);
+
+
+
+
+// ========================================
+// 角丸設定をブラウザに保存
+// ========================================
+
+useEffect(() => {
+
+  try {
+    localStorage.setItem(
+      BORDER_RADIUS_STORAGE_KEY,
+      JSON.stringify(localBorderRadii)
+    );
+
+  } catch (error) {
+    console.error("角丸設定の保存失敗:", error);
+  }
+
+}, [localBorderRadii]);
+
   // 図形の重なり順移動
    
   const moveSelectedLayer = useCallback(
@@ -1216,12 +1376,11 @@ const handleOpenFileChange = async (event) => {
 
 
 {[
-  ["rounded", "▢ 角丸四角形"],
-  ["diamond", "◆ ひし形"],
-  ["pentagon", "⬟ 五角形"],
-  ["hexagon", "⬢ 六角形"],
-  ["star", "★ 星形"],
-  ["arrow", "➜ 矢印"],
+  ["diamond", "ひし形を追加"],
+  ["pentagon", "五角形を追加"],
+  ["hexagon", "六角形を追加"],
+  ["star", "星形を追加"],
+  ["arrow", "矢印を追加"],
 ].map(([type, label]) => (
   <button
     key={type}
@@ -1271,13 +1430,6 @@ const handleOpenFileChange = async (event) => {
                     viewShapesRef
                   );
                 }}
-                onPointerUp={
-                  // マウス・指を離したときにサーバーへ正式保存します。
-                  saveSelectedRotation
-                }
-                onBlur={
-                  saveSelectedRotation
-                }
               />
 
               <span>
@@ -1326,6 +1478,53 @@ const handleOpenFileChange = async (event) => {
                 handleColorChange
               }
             />
+
+            {/* ========================================
+    四角形の角丸調整
+======================================== */}
+
+{selectedShape &&
+  ["rect", "rounded"].includes(selectedShape.type) && (
+
+  <div className="border-radius-tool">
+
+    <label htmlFor="border-radius-slider">
+      角丸
+    </label>
+
+    <input
+  id="border-radius-slider"
+  type="range"
+  min="0"
+  max="100"
+  step="1"
+
+  value={getBorderRadius(selectedShape)}
+
+  onChange={handleBorderRadiusChange}
+/>
+
+    <div className="border-radius-value">
+
+  <input
+  type="number"
+  min="0"
+  max="100"
+  step="1"
+
+  aria-label="角丸の大きさ"
+
+  value={getBorderRadius(selectedShape)}
+
+  onChange={handleBorderRadiusChange}
+/>
+
+      <span>px</span>
+
+    </div>
+
+  </div>
+)}
           </label>
 
           {/* 選択中図形がテキストの場合だけ、
@@ -1574,6 +1773,12 @@ const handleOpenFileChange = async (event) => {
 
                       color: isText
                         ? shape.fill
+                        : undefined,
+
+                        // 四角形の角丸を反映
+                        borderRadius:
+                        ["rect", "rounded"].includes(shapeType)
+                        ? `${getBorderRadius(shape)}px`
                         : undefined,
 
                       fontSize: isText
