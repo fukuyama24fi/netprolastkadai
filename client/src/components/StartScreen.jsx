@@ -51,7 +51,7 @@ export default function StartScreen({ onEnter }) {
             name="userName"
             autoComplete="nickname"
             className="pikva-start__name"
-            placeholder="例：じゃぼ"
+            placeholder="例：電大太郎"
             value={name}
             onChange={(event) => {
               setName(event.target.value);
