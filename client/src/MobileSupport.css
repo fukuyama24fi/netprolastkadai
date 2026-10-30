@@ -1,325 +1,370 @@
 /*
- * Pikva mobile compact v3
- * This file REPLACES MobileSupport.css (do not append it).
- * PC: original App.css layout.  Smartphone landscape: full-size editing area
- * with an overlay tool/history drawer.  No Socket.IO/React changes.
+ * Pikva mobile landscape v4 — replace MobileSupport.css entirely.
+ * Only CSS + main.jsx; no changes to App.jsx, Socket.IO, PostgreSQL.
+ * Mobile rules are scoped; desktop App.css is unchanged.
  */
-.mobile-panel-tabs,
-.mobile-text-edit,
-.mobile-shape-numbers {
-  display: none;
-}
+.pikva-editor-shell__mobile-tabs { display: none; }
+/* 以前のApp.jsxに追加された古いタブを二重表示しない */
+.mobile-panel-tabs { display: none !important; }
 
-/* Mobile phones. The UI keeps the existing JSX component tree. */
-@media (max-width: 767px) and (orientation: portrait),
-       (max-width: 1024px) and (orientation: landscape) {
-  html, body, #root { width: 100%; height: 100%; }
+/* Landscape phones / emulated phones. Portrait phone: readable fallback. */
+@media (max-width: 1150px) and (orientation: landscape),
+       (max-width: 767px) and (orientation: portrait) {
+  html, body, #root { max-width: 100%; height: 100%; }
+  body { overflow: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  .pikva-editor-shell { height: 100%; min-height: 0; overflow: hidden; }
 
-  .app {
+  /* 1 compact nav row containing back + panel switches. */
+  .pikva-editor-shell > .pikva-editor-shell__nav {
+    min-height: 35px;
+    height: 35px;
+    flex: 0 0 35px;
+    gap: 5px;
+    padding: 2px max(5px, env(safe-area-inset-right, 0px))
+             2px max(5px, env(safe-area-inset-left, 0px));
+    justify-content: flex-start;
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .pikva-editor-shell__nav > .pikva-editor-shell__label { display: none; }
+  .pikva-editor-shell__nav > button {
+    flex: 0 0 auto;
+    min-height: 29px;
+    height: 29px;
+    padding: 3px 8px;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    word-break: keep-all;
+    border-radius: 6px;
+  }
+  .pikva-editor-shell__mobile-tabs {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+  .pikva-editor-shell__mobile-tabs > button {
+    flex: 0 1 auto;
+    min-width: 0;
+    min-height: 29px;
+    padding: 3px clamp(4px, 1vw, 10px);
+    border: 1px solid #8499bc;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.1;
+    color: #e8effe;
+    background: #233653;
+    white-space: nowrap;
+    word-break: keep-all;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .pikva-editor-shell__mobile-tabs > button.is-active {
+    background: #e5eeff;
+    border-color: #e5eeff;
+    color: #132846;
+    font-weight: 700;
+  }
+  .pikva-editor-shell__mobile-tabs > button:focus-visible,
+  .pikva-editor-shell__nav > button:focus-visible {
+    outline: 2px solid #a6d3ff;
+    outline-offset: -2px;
+  }
+  .pikva-editor-shell__app { min-width: 0; min-height: 0; overflow: hidden; }
+  .pikva-editor-shell__app .app {
     width: 100%;
-    height: 100vh;
-    height: 100dvh;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
   }
 
-  /* Header actions can scroll horizontally instead of wrapping into extra rows. */
-  .app .app-header {
+  /* 2 one-row file toolbar. Never allow single Japanese characters to wrap. */
+  .pikva-editor-shell__app .app .app-header {
     display: flex;
     flex-wrap: nowrap;
-    flex: 0 0 auto;
-    height: 44px;
-    min-height: 44px;
-    gap: 5px;
-    padding: 4px max(7px, env(safe-area-inset-right, 0px))
-             4px max(7px, env(safe-area-inset-left, 0px));
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    min-height: 38px;
+    flex: 0 0 38px;
+    gap: 4px;
+    padding: 2px 6px;
     overflow-x: auto;
     overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
   }
-  .app .app-header > * { flex-shrink: 0; }
-  .app .app-header-title { font-size: 15px; margin-right: 3px; }
-  .app .app-header-title img { width: 18px; height: 18px; }
-  .app .file-name-input {
-    width: 105px;
-    min-width: 105px;
-    height: 35px;
-    padding: 4px 7px;
-    font-size: 16px;
-  }
-  .app .app-header button {
-    height: 35px;
-    min-height: 35px;
-    padding: 4px 9px;
-    font-size: 12px;
+  .pikva-editor-shell__app .app .app-header::-webkit-scrollbar { display: none; }
+  .pikva-editor-shell__app .app .app-header > * { flex-shrink: 0; }
+  .pikva-editor-shell__app .app .app-header-title {
+    margin: 0 3px 0 0;
+    gap: 4px;
+    font-size: 14px;
+    line-height: 1;
     white-space: nowrap;
   }
-
-  /* Tab strip occupies just one compact row. */
-  .app .mobile-panel-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: center;
-    flex: 0 0 auto;
-    gap: 5px;
-    padding: 3px max(6px, env(safe-area-inset-right, 0px))
-             3px max(6px, env(safe-area-inset-left, 0px));
-    min-height: 38px;
-    background: #fff;
-    border-bottom: 1px solid #d9e2ec;
+  .pikva-editor-shell__app .app .app-header-title img { width: 17px; height: 17px; }
+  .pikva-editor-shell__app .app .file-name-input {
+    width: clamp(76px, 13vw, 122px);
+    min-width: 76px;
+    max-width: 122px;
+    height: 31px;
+    padding: 2px 5px;
+    font-size: 16px; /* avoids iOS focus zoom */
   }
-  .app .mobile-panel-tabs button {
-    min-width: 0;
-    min-height: 32px;
-    padding: 3px 6px;
-    border: 1px solid #c8d7ee;
-    border-radius: 7px;
-    background: #eef4fc;
-    color: #284365;
+  .pikva-editor-shell__app .app .app-header button {
+    width: max-content;
+    min-width: max-content;
+    height: 31px;
+    min-height: 31px;
+    padding: 3px 8px;
     font-size: 12px;
-    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap !important;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    writing-mode: horizontal-tb;
+    text-align: center;
     touch-action: manipulation;
-    white-space: nowrap;
-  }
-  .app .mobile-panel-tabs button.active {
-    background: #2867d4;
-    border-color: #2867d4;
-    color: #fff;
-  }
-  .app .mobile-panel-tabs button:focus-visible {
-    outline: 3px solid #90b9ff;
-    outline-offset: 1px;
   }
 
-  .app .app-body {
+  /* 3 keep canvas full width; draw tools/comments over it on demand. */
+  .pikva-editor-shell__app .app .app-body {
     position: relative;
     display: flex;
-    flex: 1 1 0;
+    width: 100%;
     min-width: 0;
     min-height: 0;
+    flex: 1 1 0;
     overflow: hidden;
   }
-  .app .canvas-area { min-width: 0; min-height: 0; }
-  .app .main {
+  .pikva-editor-shell__app .app .app-body > .canvas-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     min-height: 0;
-    padding: 5px;
+  }
+  .pikva-editor-shell__app .app .main {
+    min-width: 0;
+    min-height: 0;
+    padding: 4px;
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
-  .app .zoom-bar {
+  .pikva-editor-shell__app .app .zoom-bar {
     display: flex;
-    min-height: 36px;
-    height: 36px;
-    gap: 7px;
-    padding: 2px 9px;
-    flex-shrink: 0;
-  }
-  .app .zoom-bar button {
+    height: 30px;
     min-height: 30px;
-    padding: 3px 8px;
-    white-space: nowrap;
+    flex: 0 0 30px;
+    gap: 7px;
+    padding: 1px 7px;
     font-size: 12px;
+    overflow: hidden;
   }
-  .app .zoom-bar input[type="range"] {
-    min-width: 35px;
-    width: auto;
+  .pikva-editor-shell__app .app .zoom-bar button {
+    flex: 0 0 auto;
+    min-height: 26px;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap !important;
+    word-break: keep-all;
+  }
+  .pikva-editor-shell__app .app .zoom-bar input[type="range"] {
     flex: 1 1 auto;
+    min-width: 42px;
+    width: auto;
+    margin: 0;
   }
-  .app .zoom-value { min-width: 37px; font-size: 12px; }
-
-  /* Keep pointer gesture editing enabled in the mobile App.jsx. */
-  .app .canvas .shape:not(.editing),
-  .app .canvas .resize-handle,
-  .app .canvas .rotate-handle { touch-action: none; }
-  .app .canvas .shape.text.editing .text-editor { touch-action: auto; }
-  .app .shape.selected .resize-handle {
-    width: 32px;
-    height: 32px;
-    right: -16px;
-    bottom: -16px;
-  }
-  .app .shape.selected .rotate-handle {
-    width: 32px;
-    height: 32px;
-    top: -57px;
-  }
-  .app .shape.selected .rotate-handle::after { top: 29px; height: 28px; }
-
-  .app .mobile-text-edit { display: block; }
-  .app .mobile-shape-numbers {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 7px;
-    border: 1px solid #53647a;
-    border-radius: 7px;
-    color: #fff;
-  }
-  .app .mobile-shape-numbers__grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-  .app .mobile-shape-numbers__grid label {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    font-size: 12px;
-  }
-  .app .mobile-shape-numbers__grid input {
-    width: 100%;
-    min-width: 0;
-    height: 39px;
-    border: 1px solid #c1cfe3;
-    border-radius: 6px;
-    padding: 4px 6px;
-    background: #fff;
-    color: #1b2b42;
-    font-size: 16px;
+  .pikva-editor-shell__app .app .zoom-value {
+    min-width: 34px;
+    flex: 0 0 34px;
+    text-align: right;
+    font-size: 11px;
+    white-space: nowrap;
   }
 
-  .app .code-output-panel {
-    top: 5px;
-    right: 5px;
-    bottom: 5px;
-    width: calc(100% - 10px);
-    padding: 8px;
-  }
-  .app .code-output-textarea { min-height: 0; }
-  .app .pikva-comments textarea,
-  .app .ai-chat-form textarea,
-  .app .history-section input,
-  .app .text-format-tools input { font-size: 16px; }
-}
-
-/* Landscape: the canvas NEVER shrinks when opening tools or comments.
-   A slim overlay drawer sits over the left/right edge. */
-@media (max-width: 1024px) and (orientation: landscape) {
-  .app .app-body > .canvas-area {
-    display: flex;
-    flex: 1 1 0;
-    width: 100%;
-    max-width: none;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  .app .app-body > .tool,
-  .app .app-body > .history-section {
-    position: absolute;
+  /* Hide both panels until selected in nav. No changes to JSX components. */
+  .pikva-editor-shell__app .app .app-body > .tool,
+  .pikva-editor-shell__app .app .app-body > .history-section {
     display: none;
-    z-index: 20;
+    position: absolute;
+    z-index: 70;
     top: 3px;
     bottom: 3px;
     height: auto;
     min-width: 0;
     max-width: none;
-    overflow-x: hidden;
-    box-shadow: 0 2px 12px rgb(0 0 0 / 0.17);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(18 35 62 / 0.24);
   }
-  .app.mobile-view-tools .app-body > .tool {
+  .pikva-editor-shell__app.mobile-view-tools .app .app-body > .tool {
     display: flex;
-    left: max(3px, env(safe-area-inset-left, 0px));
-    width: clamp(190px, 29vw, 248px);
     flex-direction: column;
-    gap: 7px;
+    left: max(3px, env(safe-area-inset-left, 0px));
+    width: min(246px, 48vw);
+    min-width: min(180px, 48vw);
     padding: 8px;
-    border: 1px solid #3b485a;
-    border-radius: 9px;
+    gap: 7px;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  .app.mobile-view-history .app-body > .history-section {
+  .pikva-editor-shell__app.mobile-view-history .app .app-body > .history-section {
     display: flex;
-    right: max(3px, env(safe-area-inset-right, 0px));
-    width: clamp(226px, 34vw, 286px);
     flex-direction: column;
+    right: max(3px, env(safe-area-inset-right, 0px));
+    width: min(358px, 58vw);
+    min-width: min(254px, 58vw);
     padding: 7px;
-    border: 1px solid #cbd8e8;
-    border-radius: 9px;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
-  /* Edit controls remain usable without taking half the screen. */
-  .app .tool h1 { display: none; }
-  .app .tool .shape-buttons {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 5px;
-  }
-  .app .tool .history-buttons { gap: 5px; }
-  .app .tool button {
-    width: 100%;
-    min-height: 37px;
-    padding: 5px 4px;
-    font-size: 11px;
-    line-height: 1.25;
-    overflow-wrap: anywhere;
-  }
-  .app .tool .rotation-tool,
-  .app .tool .border-radius-tool { padding: 6px; gap: 5px; }
-  .app .tool .mobile-shape-numbers { padding: 6px; }
-
-  /* Comments and history can scroll inside the compact overlay. */
-  .app .history-section .sidebar-tabs { margin-bottom: 5px; }
-  .app .history-section .sidebar-tabs button { min-height: 30px; padding: 4px; font-size: 12px; }
-  .app .history-section .history-scroll,
-  .app .history-section .ai-chat { flex: 1 1 0; min-height: 0; }
-  .app .history-section .pikva-comments {
-    margin: 3px 0 7px;
-    padding: 7px;
-    max-height: none;
-  }
-  .app .history-section .pikva-comments__help { display: none; }
-  .app .history-section .pikva-comments__list { max-height: 76px; min-height: 35px; }
-  .app .history-section .pikva-comments__form { gap: 3px; margin-top: 5px; }
-  .app .history-section .pikva-comments__form textarea { min-height: 43px; height: 43px; resize: none; }
-  .app .history-section .user-settings { margin-bottom: 5px; }
-  .app .history-section .ai-chat-form textarea { min-height: 43px; }
-}
-
-/* Portrait fallback: single-pane layout, landscape encouraged. */
-@media (max-width: 767px) and (orientation: portrait) {
-  .app::before {
-    content: "↻ 横向きにするとキャンバスを広く使えます";
-    flex: 0 0 auto;
-    display: block;
-    padding: 3px 7px;
-    font-size: 12px;
-    text-align: center;
-    color: #334766;
-    background: #edf4ff;
-  }
-  .app .app-body > .tool,
-  .app .app-body > .history-section,
-  .app .app-body > .canvas-area { display: none; }
-  .app.mobile-view-canvas .app-body > .canvas-area,
-  .app.mobile-view-tools .app-body > .tool,
-  .app.mobile-view-history .app-body > .history-section {
-    display: flex;
-    flex: 1 1 0;
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
-  .app .tool { overflow-y: auto; padding: 9px; gap: 8px; }
-  .app .tool .shape-buttons {
+  /* Tool panel: minimum 2 columns, readable labels, independent scrolling. */
+  .pikva-editor-shell__app .app .tool h1 { display: none; }
+  .pikva-editor-shell__app .app .tool .shape-buttons {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
-  .app .tool button { min-height: 44px; padding: 6px; }
-  .app .history-section { min-width: 0; padding: 8px; }
+  .pikva-editor-shell__app .app .tool button {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    height: auto;
+    padding: 5px 4px;
+    font-size: 12px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    touch-action: manipulation;
+  }
+  .pikva-editor-shell__app .app .tool .history-buttons { gap: 6px; }
+  .pikva-editor-shell__app .app .tool .rotation-tool,
+  .pikva-editor-shell__app .app .tool .border-radius-tool { padding: 6px; gap: 5px; }
+  .pikva-editor-shell__app .app .tool input[type="number"],
+  .pikva-editor-shell__app .app .tool input[type="text"] { font-size: 16px; }
+  .pikva-editor-shell__app .app .tool input[type="range"] { max-width: 100%; }
+
+  /* Comments panel: short input and scrollable list. Existing Socket.IO stays intact. */
+  .pikva-editor-shell__app .app .history-section .sidebar-tabs {
+    flex: 0 0 auto;
+    margin-bottom: 5px;
+    padding: 2px;
+    gap: 3px;
+  }
+  .pikva-editor-shell__app .app .history-section .sidebar-tabs button {
+    min-width: 0;
+    min-height: 29px;
+    padding: 3px 4px;
+    font-size: 12px;
+    line-height: 1.25;
+    word-break: keep-all;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    margin: 1px 0 5px;
+    padding: 6px;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__help { display: none; }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__heading { font-size: 12px; }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__list {
+    min-height: 25px;
+    max-height: min(75px, 20dvh);
+    padding: 2px;
+    gap: 4px;
+    overflow-y: auto;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__form {
+    gap: 3px;
+    margin-top: 4px;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__form label { font-size: 11px; }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__form textarea {
+    min-height: 36px;
+    height: 36px;
+    resize: none;
+    padding: 5px;
+    font-size: 16px;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__actions button {
+    min-height: 28px;
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+  .pikva-editor-shell__app .app .history-section .pikva-comments__actions small { font-size: 10px; }
+  .pikva-editor-shell__app .app .history-section .history-scroll {
+    flex: 1 0 65px;
+    min-height: 65px;
+    overflow-y: auto;
+  }
+  .pikva-editor-shell__app .app .history-section .user-settings {
+    margin-bottom: 4px;
+    font-size: 11px;
+  }
+  .pikva-editor-shell__app .app .history-section .user-settings input { font-size: 16px; }
+  .pikva-editor-shell__app .app .history-section .history-list { font-size: 11px; }
+  .pikva-editor-shell__app .app .history-section .ai-chat {
+    min-height: 150px;
+    flex: 1 1 auto;
+  }
+  .pikva-editor-shell__app .app .history-section .ai-chat-form { padding-top: 4px; }
+  .pikva-editor-shell__app .app .history-section .ai-chat-form textarea {
+    min-height: 39px;
+    height: 39px;
+    font-size: 16px;
+  }
+  .pikva-editor-shell__app .app .history-section .ai-chat-form-buttons { margin-top: 4px; }
+
+  /* Exported source panel should stay inside the visible editor area. */
+  .pikva-editor-shell__app .app .code-output-panel {
+    top: 7px;
+    right: 7px;
+    bottom: 7px;
+    left: 7px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 7px;
+  }
+  .pikva-editor-shell__app .app .code-output-textarea { min-height: 0; font-size: 12px; }
 }
 
-/* Very short landscape displays: reduce bars, not canvas dimensions. */
-@media (max-width: 1024px) and (orientation: landscape) and (max-height: 380px) {
-  .app .app-header { height: 39px; min-height: 39px; padding-top: 2px; padding-bottom: 2px; }
-  .app .mobile-panel-tabs { min-height: 34px; padding-top: 2px; padding-bottom: 2px; }
-  .app .mobile-panel-tabs button { min-height: 30px; }
-  .app .zoom-bar { min-height: 33px; height: 33px; }
+/* Very short landscape phones: prioritize canvas height and compact panels. */
+@media (max-width: 1150px) and (orientation: landscape) and (max-height: 430px) {
+  .pikva-editor-shell > .pikva-editor-shell__nav { height: 32px; min-height: 32px; flex-basis: 32px; }
+  .pikva-editor-shell__app .app .app-header { height: 35px; min-height: 35px; flex-basis: 35px; }
+  .pikva-editor-shell__app .app .app-header button { height: 29px; min-height: 29px; }
+  .pikva-editor-shell__app .app .zoom-bar { height: 28px; min-height: 28px; flex-basis: 28px; }
+}
+
+/* Portrait phone: allow focused editing in each pane; suggest turning landscape. */
+@media (max-width: 767px) and (orientation: portrait) {
+  .pikva-editor-shell__app .app .app-body > .canvas-area { display: flex; }
+  .pikva-editor-shell__app.mobile-view-tools .app .app-body > .canvas-area,
+  .pikva-editor-shell__app.mobile-view-history .app .app-body > .canvas-area { display: none; }
+  .pikva-editor-shell__app.mobile-view-tools .app .app-body > .tool,
+  .pikva-editor-shell__app.mobile-view-history .app .app-body > .history-section {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
