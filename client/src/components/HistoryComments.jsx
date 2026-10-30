@@ -115,19 +115,19 @@ export default function HistoryComments({ userName }) {
   return (
     <section className="pikva-comments" aria-label="共同コメント">
       <div className="pikva-comments__heading">
-        <strong>💬 共同コメント</strong>
+        <strong>コメント欄</strong>
         <span className={connected ? "is-connected" : ""}>
           {connected ? "接続中" : "未接続"}
         </span>
       </div>
       <p className="pikva-comments__help">
-        編集について相談できます。コメントは共同で表示・保存され、Undoでは消えません。
+        編集について会話ができます。コメントは共同で表示・保存され、Undoでは消えません。
       </p>
       <div className="pikva-comments__list" ref={listRef} role="log" aria-live="polite">
         {loading && comments.length === 0 ? (
           <p className="pikva-comments__empty">コメントを読み込み中…</p>
         ) : comments.length === 0 ? (
-          <p className="pikva-comments__empty">まだコメントはありません。</p>
+          <p className="pikva-comments__empty">コメントはありません。</p>
         ) : comments.map((comment) => (
           <div className="pikva-comments__item" key={String(comment.id)}>
             <div className="pikva-comments__meta">

@@ -8,6 +8,7 @@ import dotenv from 'dotenv'; //環境変数(DBのURLなど)を読み込むライ
 
 dotenv.config(); //.envファイルを適用
 import { pool } from './config/db.js'; //データベース接続用
+import { initializeHistoryComments, attachHistoryComments } from './historyComments.js';
 import { generateHTMLCode, generateCSSCode } from './utils/codeGenerator.js'; //コード抽出用
 import { askCanvasAi } from './ai/aiService.js'; //AIチャット用
 import { validateOperations, buildShapeFromAddOperation } from './ai/validateOperations.js'; //AIの操作の検証用
@@ -439,6 +440,16 @@ async function startServer() {
         //await:DBから返事が来るまで、次の行に進まない
         await pool.query("SELECT 1");
         console.log("データベース接続成功");
+        // 共同コメント専用テーブル。編集履歴/Undoとは独立させる。
+        try {
+            await initializeHistoryComments(pool);
+            console.log("共同コメント用テーブル確認完了");
+        } catch (error) {
+            // キャンバスなど既存機能は引き続き使用できるようにする。
+            // コメント送信エラーの際は、まずこのログを確認すること。
+            console.error("共同コメント用テーブル初期化失敗:", error);
+        }
+
 
         //初期化完了を待ってからサーバー起動
         //canvas_objects を読み込む
@@ -523,6 +534,13 @@ io.on('connection', async (socket) => { //クライアントが1人接続して�
     });
 
     sendHistory(socket);
+    // 接続ユーザーごとにコメント一覧/送信用Socket.IOイベントを登録する。
+    attachHistoryComments(
+        socket, io, pool,
+        () => userNames[connectedUserId] || connectedUserName,
+        connectedUserId
+    );
+
 
     //メッセージ受信とaction分岐
     //クライアントからの操作を受信したときの処理（実際の受信は下の socket.on("message") で行う）
