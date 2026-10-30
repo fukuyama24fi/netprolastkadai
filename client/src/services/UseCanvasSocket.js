@@ -509,32 +509,56 @@ export function useCanvasSocket() {
     }, []);
 
 
-    const importCanvas =
-  useCallback((objects) => {
-    if (!Array.isArray(objects)) {
-      console.warn(
-        "読み込みデータが配列ではありません",
-        objects
-      );
+    // ========================================
+// JSONファイルをサーバーに読み込ませる
+// ========================================
 
+const importCanvas = useCallback((objects) => {
+  return new Promise((resolve, reject) => {
+
+    const socket = socketService.socket;
+
+    // サーバーとの接続確認
+    if (!socket?.connected) {
+      reject(
+        new Error("サーバーに接続されていません。")
+      );
       return;
     }
 
-    console.log(
-      "IMPORT_CANVAS送信:",
-      {
-        objectCount:
-          objects.length,
-      }
-    );
+    // サーバーに読み込みを依頼
+    socket.timeout(90000).emit(
+      "canvas:import",
+      { objects },
 
-    socketService.sendMessage(
-      "IMPORT_CANVAS",
-      {
-        objects,
+      (error, response) => {
+
+        if (error) {
+          reject(
+            new Error(
+              "サーバーから応答がありませんでした。"
+            )
+          );
+          return;
+        }
+
+        // 読み込み失敗
+        if (!response?.ok) {
+          reject(
+            new Error(
+              response?.error ||
+              "読み込みに失敗しました。"
+            )
+          );
+          return;
+        }
+
+        // 読み込み成功
+        resolve(response);
       }
     );
-  }, []);
+  });
+}, []);
 
   /*
    * HTML・CSS出力
@@ -618,4 +642,4 @@ return {
   exportCode,
   exportedFile,
 };
-}
+}

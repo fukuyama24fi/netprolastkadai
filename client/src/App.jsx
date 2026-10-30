@@ -81,6 +81,7 @@ const App = () => {
     undo,
     redo,
     jumpToHistory,
+    importCanvas,
     exportedHtml,
     exportCode,
   } = useCanvasSocket();
@@ -116,6 +117,8 @@ const App = () => {
   // ========== Refs ==========
   //useRef      = 画面を更新せずに使えるメモ帳
   const canvasRef = useRef(null);
+  // JSONファイルを選択するinputを操作する
+const openFileInputRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
   const historyScrollRef = useRef(null);
@@ -784,6 +787,102 @@ const App = () => {
     handleSaveJsonFile(viewShapes, fileName);
   }, [viewShapes, fileName, handleSaveJsonFile]);
 
+  // ========================================
+// JSONファイル読み込み機能
+// ========================================
+
+// 「開く」ボタンを押したとき
+const handleClickOpenFile = () => {
+  openFileInputRef.current?.click();
+};
+
+// JSONファイルを選択したとき
+const handleOpenFileChange = async (event) => {
+  const file = event.target.files?.[0];
+
+  // 同じファイルを再選択できるようにする
+  event.target.value = "";
+
+  if (!file) {
+    return;
+  }
+
+  // ファイルサイズ制限（5MB）
+  if (file.size > 5 * 1024 * 1024) {
+    window.alert("ファイルサイズが大きすぎます。");
+    return;
+  }
+
+  try {
+    // ファイルを文字列として読み込む
+    const text = await file.text();
+
+    // JSONをJavaScriptオブジェクトに変換
+    const data = JSON.parse(text);
+
+    // 保存形式を確認
+    if (
+      !data ||
+      data.version !== 1 ||
+      !Array.isArray(data.objects)
+    ) {
+      throw new Error(
+        "Pikvaで保存したJSONファイルではありません。"
+      );
+    }
+
+    // 図形の数を確認
+    if (data.objects.length > 200) {
+      throw new Error(
+        "一度に読み込める図形は200個までです。"
+      );
+    }
+
+    // 現在のキャンバスを上書きしてよいか確認
+    const confirmed = window.confirm(
+      "現在の共通キャンバスを読み込んだ内容で置き換えます。\n" +
+      "この変更は他の参加者にも反映されます。\n\n" +
+      "事前に保存しましたか？\n\n" +
+      "読み込みを続行しますか？"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Socket.IO経由でサーバーへ送信
+    const result = await importCanvas(data.objects);
+
+    // ファイル名を変更
+    const loadedName =
+      typeof data.fileName === "string" &&
+      data.fileName.trim()
+        ? data.fileName
+        : file.name.replace(/\.json$/i, "");
+
+    setFileName(loadedName);
+
+    // 選択状態を解除
+    clearSelectionState({
+      setSelectedId,
+      setEditingId,
+      setInteraction,
+    });
+
+    window.alert(
+      `${result.count}個の図形を読み込みました！`
+    );
+
+  } catch (error) {
+    console.error("JSON読み込みエラー:", error);
+
+    window.alert(
+      "ファイルを開けませんでした。\n" +
+      error.message
+    );
+  }
+};
+
   //履歴の図形名を日本語へ変換
    
   const formatObjectLabel = useCallback((historyItem) => {
@@ -831,9 +930,20 @@ const App = () => {
           保存
         </button>
 
-        {/* 現在はonClickがないため、この2つは押しても何も起きません。
-            機能を付けるにはonClick処理が必要です。 */}
-        <button type="button">開く</button>
+        {/* JSONファイルを選択する隠しinput */}
+        <input
+          type="file"
+          accept=".json,application/json"
+          ref={openFileInputRef}
+          onChange={handleOpenFileChange}
+          style={{ display: "none" }}
+          />
+
+          {/* ファイルを開くボタン */}
+        <button type="button" onClick={handleClickOpenFile}>
+          開く
+        </button>
+        
 
         <button type="button">PNG出力</button>
 
