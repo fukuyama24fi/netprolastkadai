@@ -16,6 +16,7 @@ import {
 import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator";
 import { useAiChat } from "./hooks/useAiChat";
 import AiChatPanel from "./components/AiChatPanel";
+import HistoryComments from "./components/HistoryComments";
 import "./App.css";
 
 // ========== 定数 ==========
@@ -1474,6 +1475,9 @@ const App = () => {
               AIアシスタント
             </button>
           </div>
+          {sidebarTab === "history" && (
+            <HistoryComments userName={userName} />
+            )}
           {sidebarTab === "ai" ? (
             <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
@@ -1572,7 +1576,8 @@ const App = () => {
             />
           </ul>
           </div>
-          )}
+          )
+          }
           {/* ここまでが履歴タブの中身 */}
         </section>
       </div>
