@@ -1,5 +1,5 @@
 -- データベースのCREATE TABLE権限がない場合は、DB管理者にNeonのSQL Editorで実行してもらう。
-
+-- edit_historyにコメントを入れず、Undo/Redoから独立させる。
 CREATE TABLE IF NOT EXISTS history_comments (
   id BIGSERIAL PRIMARY KEY,
   user_id TEXT NOT NULL,

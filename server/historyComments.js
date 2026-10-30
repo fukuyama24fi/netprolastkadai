@@ -1,4 +1,8 @@
-
+/**
+ * 履歴コメント用の独立した Socket.IO チャンネル。
+ * edit_history にコメントを混ぜると UNDO / REDO / 履歴ジャンプを壊すため、
+ * history_comments テーブルに分けて永続化する。
+ */
 const COMMENT_LIMIT = 100;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_NAME_LENGTH = 30;
