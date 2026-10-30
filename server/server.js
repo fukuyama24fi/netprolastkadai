@@ -1215,8 +1215,17 @@ socket.on("canvas:import", (payload, reply) => {
             }
 
             const allowedTypes = [
-                "rect", "circle", "triangle", "text"
-            ];
+  "rect",
+  "circle",
+  "triangle",
+  "text",
+  "rounded",
+  "diamond",
+  "pentagon",
+  "hexagon",
+  "star",
+  "arrow",
+];
 
             // 保存ファイルの図形を検証・整形
             const nextCanvas = input.map((obj, index) => {

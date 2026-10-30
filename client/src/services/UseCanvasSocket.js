@@ -325,6 +325,12 @@ export function useCanvasSocket() {
         "circle",
         "triangle",
         "text",
+        "rounded",
+        "diamond",
+        "pentagon",
+        "hexagon",
+        "star",
+        "arrow",
       ];
 
       const safeType =
@@ -388,6 +394,66 @@ export function useCanvasSocket() {
 
           break;
         }
+
+case "rounded": {
+  newShape = {
+    ...commonShape,
+    width: 150,
+    height: 100,
+    fill: "#5b8def",
+  };
+  break;
+}
+
+case "diamond": {
+  newShape = {
+    ...commonShape,
+    width: 120,
+    height: 120,
+    fill: "#a855f7",
+  };
+  break;
+}
+
+case "pentagon": {
+  newShape = {
+    ...commonShape,
+    width: 120,
+    height: 120,
+    fill: "#10b981",
+  };
+  break;
+}
+
+case "hexagon": {
+  newShape = {
+    ...commonShape,
+    width: 140,
+    height: 120,
+    fill: "#f59e0b",
+  };
+  break;
+}
+
+case "star": {
+  newShape = {
+    ...commonShape,
+    width: 130,
+    height: 130,
+    fill: "#facc15",
+  };
+  break;
+}
+
+case "arrow": {
+  newShape = {
+    ...commonShape,
+    width: 160,
+    height: 100,
+    fill: "#ef4444",
+  };
+  break;
+}
 
         case "text": {
           newShape = {

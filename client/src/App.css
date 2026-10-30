@@ -996,3 +996,74 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ========================================
+   新しい図形スタイル
+======================================== */
+
+/* ① 角丸四角形 */
+.shape.rounded .shape-body {
+  border-radius: 18px;
+}
+
+/* ② ひし形 */
+.shape.diamond .shape-body {
+  clip-path: polygon(
+    50% 0%,
+    100% 50%,
+    50% 100%,
+    0% 50%
+  );
+}
+
+/* ③ 五角形 */
+.shape.pentagon .shape-body {
+  clip-path: polygon(
+    50% 0%,
+    100% 38%,
+    82% 100%,
+    18% 100%,
+    0% 38%
+  );
+}
+
+/* ④ 六角形 */
+.shape.hexagon .shape-body {
+  clip-path: polygon(
+    25% 0%,
+    75% 0%,
+    100% 50%,
+    75% 100%,
+    25% 100%,
+    0% 50%
+  );
+}
+
+/* ⑤ 星形 */
+.shape.star .shape-body {
+  clip-path: polygon(
+    50% 0%,
+    61% 35%,
+    98% 35%,
+    68% 57%,
+    79% 91%,
+    50% 70%,
+    21% 91%,
+    32% 57%,
+    2% 35%,
+    39% 35%
+  );
+}
+
+/* ⑥ 右向き矢印 */
+.shape.arrow .shape-body {
+  clip-path: polygon(
+    0% 25%,
+    60% 25%,
+    60% 0%,
+    100% 50%,
+    60% 100%,
+    60% 75%,
+    0% 75%
+  );
+}

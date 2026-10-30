@@ -28,6 +28,14 @@ const TYPE_LABELS = {
   circle: "円",
   triangle: "三角形",
   text: "テキスト",
+
+  // 新しい図形
+  rounded: "角丸四角形",
+  diamond: "ひし形",
+  pentagon: "五角形",
+  hexagon: "六角形",
+  star: "星形",
+  arrow: "矢印",
 };
 // 図形同士が6px以内まで近づいたら、ピタッと揃えるための距離。
 // 現在このファイルでは直接使わず、別Hookへ移動済みの可能性があります。
@@ -1205,6 +1213,24 @@ const handleOpenFileChange = async (event) => {
             >
               三角形を追加
             </button>
+
+
+{[
+  ["rounded", "▢ 角丸四角形"],
+  ["diamond", "◆ ひし形"],
+  ["pentagon", "⬟ 五角形"],
+  ["hexagon", "⬢ 六角形"],
+  ["star", "★ 星形"],
+  ["arrow", "➜ 矢印"],
+].map(([type, label]) => (
+  <button
+    key={type}
+    type="button"
+    onClick={() => handleAddShape(type)}
+  >
+    {label}
+  </button>
+))}
 
             <button
               type="button"

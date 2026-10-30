@@ -32,6 +32,33 @@ export function getSafeNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+// 新しく追加した図形のCSS
+const EXTRA_SHAPE_CSS = {
+  rounded: [
+    "border-radius: 18px",
+  ],
+
+  diamond: [
+    "clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+  ],
+
+  pentagon: [
+    "clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+  ],
+
+  hexagon: [
+    "clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+  ],
+
+  star: [
+    "clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
+  ],
+
+  arrow: [
+    "clip-path: polygon(0% 25%, 60% 25%, 60% 0%, 100% 50%, 60% 100%, 60% 75%, 0% 75%)",
+  ],
+};
+
 /**
  * 図形タイプから対応するCSS記述を生成
  * @param {string} type - 図形タイプ
@@ -63,10 +90,18 @@ function getTypeSpecificStyles(type, fill, fontProps = {}) {
       "overflow-wrap: anywhere",
       "line-height: 1.2"
     );
+  }else if (EXTRA_SHAPE_CSS[type]) {
+    styles.push(
+      `background-color: ${fill}`,
+      ...EXTRA_SHAPE_CSS[type]
+    );
   }
 
   return styles;
 }
+
+
+
 
 /**
  * 単一の図形のCSSクラスを生成
@@ -153,7 +188,18 @@ ${shapeCss.join("\n\n")}
  * @returns {string} 完全なHTML
  */
 export function generateFrontendHtml(shapes = [], cssFileName = "pikva-canvas.css") {
-  const VALID_SHAPE_TYPES = ["rect", "circle", "triangle", "text"];
+  const VALID_SHAPE_TYPES = [
+  "rect",
+  "circle",
+  "triangle",
+  "text",
+  "rounded",
+  "diamond",
+  "pentagon",
+  "hexagon",
+  "star",
+  "arrow",
+];
 
   const elements = shapes.map((shape, index) => {
     const type = VALID_SHAPE_TYPES.includes(shape.type) ? shape.type : "rect";
