@@ -25,8 +25,6 @@ import "./App.css";
 // 図形の角丸設定
 // ========================================
 
-const MAX_BORDER_RADIUS = 100;
-const BORDER_RADIUS_STORAGE_KEY = "pikva-border-radius-local";
 
 // 図形から角丸の大きさを取得する
 const getBorderRadius = (shape) => {
@@ -52,6 +50,8 @@ const getBorderRadius = (shape) => {
 
 // ========== 定数 ==========
 
+const MAX_BORDER_RADIUS = 100;
+const BORDER_RADIUS_STORAGE_KEY = "pikva-border-radius-local";
 const TYPE_LABELS = {
   rect: "四角形",
   circle: "円",
@@ -146,6 +146,10 @@ const App = () => {
 // ブラウザ内の角丸設定
 // ========================================
 
+// ========================================
+// 角丸設定をブラウザから読み込む
+// ========================================
+
 const [localBorderRadii, setLocalBorderRadii] = useState(() => {
   try {
     const saved = localStorage.getItem(
@@ -167,10 +171,71 @@ const [localBorderRadii, setLocalBorderRadii] = useState(() => {
     return parsed;
 
   } catch (error) {
-    console.error("角丸設定の読み込み失敗:", error);
+    console.error("角丸設定読み込みエラー:", error);
     return {};
   }
 });
+
+// ========================================
+// 角丸設定をブラウザに保存
+// ========================================
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      BORDER_RADIUS_STORAGE_KEY,
+      JSON.stringify(localBorderRadii)
+    );
+  } catch (error) {
+    console.error("角丸設定保存エラー:", error);
+  }
+}, [localBorderRadii]);
+
+// ========================================
+// 図形の角丸値を取得
+// ========================================
+
+const getBorderRadius = (shape) => {
+  if (!shape) return 0;
+
+  const radius = localBorderRadii[shape.id];
+
+  if (
+    typeof radius === "number" &&
+    Number.isFinite(radius)
+  ) {
+    return Math.max(
+      0,
+      Math.min(MAX_BORDER_RADIUS, Math.round(radius))
+    );
+  }
+
+  // 従来の角丸四角形との互換性
+  return shape.type === "rounded" ? 18 : 0;
+};
+
+// ========================================
+// 角丸を変更する
+// ========================================
+
+const handleBorderRadiusChange = (event) => {
+  if (!selectedId) return;
+
+  const value = Number(event.target.value);
+
+  if (!Number.isFinite(value)) return;
+
+  const radius = Math.max(
+    0,
+    Math.min(MAX_BORDER_RADIUS, Math.round(value))
+  );
+
+  setLocalBorderRadii((prev) => ({
+    ...prev,
+    [selectedId]: radius,
+  }));
+};
+
   const [selectedId, setSelectedId] = useState(null);// 現在の操作情報。
   const [interaction, setInteraction] = useState(null);// 図形整列用の補助線情報。
   const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES); // 現在テキスト編集中の図形ID
@@ -1479,9 +1544,6 @@ const handleOpenFileChange = async (event) => {
               }
             />
 
-            {/* ========================================
-    四角形の角丸調整
-======================================== */}
 
 {selectedShape &&
   ["rect", "rounded"].includes(selectedShape.type) && (
