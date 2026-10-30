@@ -1,0 +1,292 @@
+/* Pikva スマホ横画面対応 v2 — スマホ用UIのみ。サーバー、共同コメント通信は変更しない */
+.mobile-panel-tabs,
+.mobile-text-edit,
+.mobile-shape-numbers { display: none; }
+
+@media (max-width: 767px) and (orientation: portrait),
+       (max-width: 1024px) and (orientation: landscape) {
+  html, body, #root { width: 100%; height: 100%; }
+  .app { width: 100%; height: 100%; height: 100dvh; overflow: hidden; }
+  .app-header {
+    height: 54px;
+    min-height: 54px;
+    gap: 7px;
+    padding: 6px 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .app-header > * { flex-shrink: 0; }
+  .app-header-title { font-size: 17px; margin-right: 2px; }
+  .file-name-input { width: 130px; min-width: 130px; height: 42px; font-size: 16px; }
+  .app-header button { min-height: 42px; height: 42px; padding: 7px 12px; }
+
+  .mobile-panel-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 7px 9px;
+    background: #ffffff;
+    border-bottom: 1px solid #d5deee;
+    flex-shrink: 0;
+  }
+  .mobile-panel-tabs button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 7px 4px;
+    border: 1px solid #ced9ed;
+    border-radius: 9px;
+    background: #edf3fe;
+    color: #213c67;
+    font-size: clamp(11px, 3.3vw, 14px);
+    font-weight: 700;
+    touch-action: manipulation;
+  }
+  .mobile-panel-tabs button.active {
+    background: #2867d4;
+    border-color: #2867d4;
+    color: white;
+  }
+  .mobile-panel-tabs button:focus-visible {
+    outline: 3px solid #a7ccff;
+    outline-offset: 1px;
+  }
+
+  .app-body { min-height: 0; min-width: 0; flex: 1; }
+  .app-body > .tool,
+  .app-body > .history-section,
+  .app-body > .canvas-area { display: none; }
+  .app.mobile-view-canvas .app-body > .canvas-area { display: flex; }
+  .app.mobile-view-tools .app-body > .tool { display: flex; }
+  .app.mobile-view-history .app-body > .history-section { display: flex; }
+
+  .app-body > .tool,
+  .app-body > .history-section,
+  .app-body > .canvas-area {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 0;
+    height: 100%;
+  }
+  .tool {
+    padding: 12px;
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .tool h1 { margin-bottom: 0; }
+  .shape-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .tool button { min-height: 46px; padding: 9px 8px; }
+  .history-section {
+    padding: 10px;
+    border-left: 0;
+    overscroll-behavior: contain;
+  }
+  .history-section .sidebar-tabs button { min-height: 42px; }
+  .history-scroll, .ai-chat-messages { overscroll-behavior: contain; }
+  .pikva-comments { min-width: 0; }
+
+  .canvas-area { min-height: 0; }
+  .main {
+    min-width: 0;
+    padding: 12px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .zoom-bar {
+    gap: 8px;
+    padding: 6px 10px;
+    min-height: 53px;
+    height: 53px;
+  }
+  .zoom-bar button { min-height: 42px; padding: 7px 10px; }
+  .zoom-bar input[type="range"] { flex: 1; width: auto; min-width: 30px; }
+  .zoom-value { min-width: 38px; }
+
+  /* 図形の上ではタッチ操作をブラウザに取られないようにする。
+     何もないキャンバスの上では通常の指スクロールが使える。 */
+  .canvas .shape:not(.editing),
+  .canvas .resize-handle,
+  .canvas .rotate-handle { touch-action: none; }
+  .shape.text.editing .text-editor { touch-action: auto; }
+
+  /* 指が当たりやすいハンドル。拡大率に応じて実際の表示サイズも縮むので
+     細かい編集では表示倍率を上げるか以下の数値入力を使う。 */
+  .shape.selected .resize-handle { width: 30px; height: 30px; right: -15px; bottom: -15px; }
+  .shape.selected .rotate-handle { width: 30px; height: 30px; top: -56px; }
+  .shape.selected .rotate-handle::after { top: 27px; height: 28px; }
+
+  .mobile-text-edit { display: block; }
+  .mobile-shape-numbers {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    border: 1px solid #53647a;
+    border-radius: 9px;
+    padding: 12px;
+    color: #fff;
+  }
+  .mobile-shape-numbers__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .mobile-shape-numbers__grid label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+  .mobile-shape-numbers__grid input {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 6px;
+    border: 1px solid #cad6e6;
+    background: white;
+    color: #15243a;
+    padding: 8px;
+    font-size: 16px;
+  }
+
+  .code-output-panel {
+    top: 15%; right: 8px; bottom: 8px;
+    width: calc(100% - 16px);
+  }
+  .ai-chat-form textarea,
+  .pikva-comments textarea,
+  .history-section input,
+  .text-format-tools input { font-size: 16px; }
+}
+
+@media (max-width: 360px) {
+  .mobile-panel-tabs { gap: 4px; padding-inline: 6px; }
+  .app-header-title { font-size: 15px; }
+}
+
+/* =============================
+   v2: スマホ横向き専用レイアウト
+   タブで切り替えると「中央キャンバス + 左/右パネル」になる。
+   旧v1の縦向き単独パネル操作は残す。
+   ============================= */
+@media (max-width: 1024px) and (orientation: landscape) {
+  /* 高さの少ない横向きでも、キャンバスの表示領域を最大限確保。 */
+  .app-header {
+    height: 44px;
+    min-height: 44px;
+    padding: 3px 8px;
+    gap: 6px;
+  }
+  .app-header-title { font-size: 15px; }
+  .app-header .file-name-input {
+    height: 36px;
+    width: 120px;
+    min-width: 120px;
+  }
+  .app-header button {
+    height: 36px;
+    min-height: 36px;
+    padding: 5px 10px;
+  }
+  .mobile-panel-tabs {
+    padding: 3px 8px;
+    gap: 6px;
+  }
+  .mobile-panel-tabs button {
+    min-height: 36px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .app-body { flex-direction: row; min-height: 0; min-width: 0; }
+
+  /* 最初の「キャンバス」タブでは横幅を全部編集領域に使う。 */
+  .app.mobile-view-canvas .app-body > .canvas-area {
+    display: flex;
+  }
+
+  /* 「図形・編集」なら左サイドバーとキャンバスを並べる。 */
+  .app.mobile-view-tools .app-body > .tool {
+    display: flex;
+    flex: 0 0 clamp(196px, 27vw, 285px);
+    width: clamp(196px, 27vw, 285px);
+    max-width: 42%;
+    height: 100%;
+    padding: 10px;
+    gap: 9px;
+    overflow-y: auto;
+  }
+  .app.mobile-view-tools .app-body > .canvas-area { display: flex; }
+
+  /* 「コメント・履歴」ならキャンバスと右サイドバーを並べる。 */
+  .app.mobile-view-history .app-body > .history-section {
+    display: flex;
+    flex: 0 0 clamp(230px, 32vw, 325px);
+    width: clamp(230px, 32vw, 325px);
+    max-width: 48%;
+    height: 100%;
+    padding: 8px;
+    overflow: hidden;
+  }
+  .app.mobile-view-history .app-body > .canvas-area { display: flex; }
+
+  /* mobile v1では各表示パネルが width:100% なので、横並び用に解除する。 */
+  .app-body > .canvas-area {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+  }
+  .main { padding: 8px; }
+  .zoom-bar {
+    height: 41px;
+    min-height: 41px;
+    padding: 4px 8px;
+    gap: 7px;
+  }
+  .zoom-bar button { min-height: 32px; padding: 4px 8px; }
+  .zoom-bar input[type="range"] { width: auto; min-width: 36px; flex: 1 1 auto; }
+  .zoom-value { min-width: 36px; }
+
+  /* 左サイドバーは縦スクロール、狭くても図形を押しやすく。 */
+  .tool h1 { font-size: 16px; }
+  .shape-buttons { gap: 6px; }
+  .tool button { min-height: 40px; padding: 6px; font-size: 12px; }
+  .mobile-shape-numbers { padding: 8px; }
+  .mobile-shape-numbers__grid { gap: 6px; }
+  .mobile-shape-numbers__grid input { min-height: 40px; }
+
+  /* コメント・AI画面も横画面の短い高さに収まるようにする。 */
+  .history-section .sidebar-tabs button { min-height: 36px; }
+  .history-section .user-settings { margin-bottom: 6px; }
+  .history-section textarea { max-width: 100%; }
+  .ai-chat-form textarea, .pikva-comments textarea { min-height: 42px; }
+
+  /* 回転中の端末ではiOSのアドレスバーで高さが変わる場合あり。
+     見切れないよう本文をスクロール可能な領域として保持。 */
+  .app-body > .tool, .app-body > .history-section,
+  .app-body > .canvas-area { min-height: 0; }
+}
+
+/* 横向き推奨。縦向きも使えるように残して、強制回転はしない。 */
+@media (max-width: 767px) and (orientation: portrait) {
+  .app::before {
+    content: "↻ Pikvaはスマホの横画面での利用がおすすめです";
+    display: block;
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    color: #31405f;
+    font-size: 12px;
+    text-align: center;
+    background: #eaf0fc;
+    border-bottom: 1px solid #c9d9ee;
+  }
+}
+
+@media (max-width: 680px) and (orientation: landscape) {
+  .app.mobile-view-tools .app-body > .tool { flex-basis: 175px; width: 175px; }
+  .app.mobile-view-history .app-body > .history-section { flex-basis: 205px; width: 205px; }
+  .mobile-panel-tabs button { font-size: 11px; }
+}
