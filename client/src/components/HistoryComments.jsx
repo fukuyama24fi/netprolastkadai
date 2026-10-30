@@ -31,6 +31,7 @@ export default function HistoryComments({ userName }) {
   const [comments, setComments] = useState([]);
   const [message, setMessage] = useState("");
   const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -60,7 +61,14 @@ export default function HistoryComments({ userName }) {
 
     const onConnect = () => {
       setConnected(true);
+      setConnectionError("");
       fetchComments();
+    };
+    const onConnectError = (error) => {
+      setConnected(false);
+      setLoading(false);
+      console.warn("コメント用Socket.IO接続失敗:", error?.message);
+      setConnectionError("サーバーとの接続に失敗しました。公開時はVITE_SERVER_URLとRenderの稼働状態を確認してください。");
     };
     const onDisconnect = () => {
       setConnected(false);
@@ -71,12 +79,14 @@ export default function HistoryComments({ userName }) {
     };
 
     socket.on("connect", onConnect);
+    socket.on("connect_error", onConnectError);
     socket.on("disconnect", onDisconnect);
     socket.on("historyComments:new", onNewComment);
     if (socket.connected) onConnect();
 
     return () => {
       socket.off("connect", onConnect);
+      socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
       socket.off("historyComments:new", onNewComment);
       socketRef.current = null;
@@ -115,19 +125,19 @@ export default function HistoryComments({ userName }) {
   return (
     <section className="pikva-comments" aria-label="共同コメント">
       <div className="pikva-comments__heading">
-        <strong>コメント欄</strong>
+        <strong>💬 共同コメント</strong>
         <span className={connected ? "is-connected" : ""}>
           {connected ? "接続中" : "未接続"}
         </span>
       </div>
       <p className="pikva-comments__help">
-        編集について会話ができます。コメントは共同で表示・保存され、Undoでは消えません。
+        編集について相談できます。コメントは共同で表示・保存され、Undoでは消えません。
       </p>
       <div className="pikva-comments__list" ref={listRef} role="log" aria-live="polite">
         {loading && comments.length === 0 ? (
           <p className="pikva-comments__empty">コメントを読み込み中…</p>
         ) : comments.length === 0 ? (
-          <p className="pikva-comments__empty">コメントはありません。</p>
+          <p className="pikva-comments__empty">まだコメントはありません。</p>
         ) : comments.map((comment) => (
           <div className="pikva-comments__item" key={String(comment.id)}>
             <div className="pikva-comments__meta">
@@ -155,6 +165,12 @@ export default function HistoryComments({ userName }) {
           </button>
         </div>
       </form>
+      {!connected && connectionError && (
+        <div className="pikva-comments__error" role="alert">
+          {connectionError}
+          <button type="button" onClick={() => socketRef.current?.connect()}>再接続</button>
+        </div>
+      )}
       {error && (
         <div className="pikva-comments__error" role="alert">
           <span>{error}</span>

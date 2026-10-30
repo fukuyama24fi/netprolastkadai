@@ -6,8 +6,6 @@ import {
   useState,
 } from "react";
 
-import { toBlob } from "html-to-image";
-
 import { useCanvasSocket } from "./services/UseCanvasSocket";//サーバ通信
 import {
   useCanvasCalculations,//重なり
@@ -19,53 +17,48 @@ import { generateFrontendCss, generateFrontendHtml } from "./utils/htmlGenerator
 import { useAiChat } from "./hooks/useAiChat";
 import AiChatPanel from "./components/AiChatPanel";
 import HistoryComments from "./components/HistoryComments";
+import { exportCanvasPng } from "./utils/canvasPngExport";
+import "./components/LocalBorderRadiusTool.css";
 import "./App.css";
-
-// ========================================
-// 図形の角丸設定
-// ========================================
-
-
-// 図形から角丸の大きさを取得する
-const getBorderRadius = (shape) => {
-  if (!shape) return 0;
-
-  if (Number.isFinite(shape.borderRadius)) {
-    return Math.max(
-      0,
-      Math.min(
-        MAX_BORDER_RADIUS,
-        Math.round(shape.borderRadius)
-      )
-    );
-  }
-
-  // 以前作成した角丸四角形との互換性
-  if (shape.type === "rounded") {
-    return 18;
-  }
-
-  return 0;
-};
 
 // ========== 定数 ==========
 
-const MAX_BORDER_RADIUS = 100;
-const BORDER_RADIUS_STORAGE_KEY = "pikva-border-radius-local";
 const TYPE_LABELS = {
   rect: "四角形",
   circle: "円",
   triangle: "三角形",
   text: "テキスト",
-
-  // 新しい図形
-  rounded: "角丸四角形",
+  rounded: "角丸四角形（旧形式）",
   diamond: "ひし形",
   pentagon: "五角形",
   hexagon: "六角形",
   star: "星形",
   arrow: "矢印",
 };
+
+// 角丸は各ブラウザ内で管理し、サーバーには送信しない。
+const RADIUS_STORAGE_KEY = "pikva:local-border-radii:v1";
+const MAX_BORDER_RADIUS = 100;
+
+function readSavedRadii() {
+  try {
+    const data = JSON.parse(window.localStorage.getItem(RADIUS_STORAGE_KEY) || "{}");
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch (error) {
+    console.warn("角丸設定を読み込めませんでした:", error);
+    return {};
+  }
+}
+
+function radiusForShape(shape, radii) {
+  if (!shape) return 0;
+  const value = radii[String(shape.id)];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(MAX_BORDER_RADIUS, Math.round(value)));
+  }
+  // 古いデータの固定角丸四角形は従来の見た目を保つ
+  return shape.type === "rounded" ? 18 : 0;
+}
 // 図形同士が6px以内まで近づいたら、ピタッと揃えるための距離。
 // 現在このファイルでは直接使わず、別Hookへ移動済みの可能性があります。
 const SNAP_THRESHOLD = 6;
@@ -142,107 +135,22 @@ const App = () => {
   // ========== State ==========
   //画面で使う、変化する値を入れる箱
   const [viewShapes, setViewShapes] = useState([]);// 現在選択中の図形ID
-  // ========================================
-// ブラウザ内の角丸設定
-// ========================================
-
-// ========================================
-// 角丸設定をブラウザから読み込む
-// ========================================
-
-const [localBorderRadii, setLocalBorderRadii] = useState(() => {
-  try {
-    const saved = localStorage.getItem(
-      BORDER_RADIUS_STORAGE_KEY
-    );
-
-    if (!saved) return {};
-
-    const parsed = JSON.parse(saved);
-
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      return {};
+  const [localBorderRadii, setLocalBorderRadii] = useState(readSavedRadii);
+  const [pngExporting, setPngExporting] = useState(false);
+  // 角丸は図形データに混ぜないため、共同編集やDBスキーマには影響しない。
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RADIUS_STORAGE_KEY, JSON.stringify(localBorderRadii));
+    } catch (error) {
+      console.warn("角丸設定を保存できませんでした:", error);
     }
-
-    return parsed;
-
-  } catch (error) {
-    console.error("角丸設定読み込みエラー:", error);
-    return {};
-  }
-});
-
-// ========================================
-// 角丸設定をブラウザに保存
-// ========================================
-
-useEffect(() => {
-  try {
-    localStorage.setItem(
-      BORDER_RADIUS_STORAGE_KEY,
-      JSON.stringify(localBorderRadii)
-    );
-  } catch (error) {
-    console.error("角丸設定保存エラー:", error);
-  }
-}, [localBorderRadii]);
-
-// ========================================
-// 図形の角丸値を取得
-// ========================================
-
-const getBorderRadius = (shape) => {
-  if (!shape) return 0;
-
-  const radius = localBorderRadii[shape.id];
-
-  if (
-    typeof radius === "number" &&
-    Number.isFinite(radius)
-  ) {
-    return Math.max(
-      0,
-      Math.min(MAX_BORDER_RADIUS, Math.round(radius))
-    );
-  }
-
-  // 従来の角丸四角形との互換性
-  return shape.type === "rounded" ? 18 : 0;
-};
-
-// ========================================
-// 角丸を変更する
-// ========================================
-
-const handleBorderRadiusChange = (event) => {
-  if (!selectedId) return;
-
-  const value = Number(event.target.value);
-
-  if (!Number.isFinite(value)) return;
-
-  const radius = Math.max(
-    0,
-    Math.min(MAX_BORDER_RADIUS, Math.round(value))
-  );
-
-  setLocalBorderRadii((prev) => ({
-    ...prev,
-    [selectedId]: radius,
-  }));
-};
-
+  }, [localBorderRadii]);
   const [selectedId, setSelectedId] = useState(null);// 現在の操作情報。
   const [interaction, setInteraction] = useState(null);// 図形整列用の補助線情報。
   const [smartGuides, setSmartGuides] = useState(EMPTY_SMART_GUIDES); // 現在テキスト編集中の図形ID
   const [editingId, setEditingId] = useState(null); // textareaへ入力中の、まだ確定していない文字。
   const [draftText, setDraftText] = useState("");
   const [fileName, setFileName] = useState("pikva-canvas");// 保存・出力時に使うファイル名。
-　const [pngExporting, setPngExporting] = useState(false);// PNG画像を出力しているかどうか
   const [codeOutput, setCodeOutput] = useState({ // 画面へ表示するHTMLまたはCSSコード。
     type: "",
     content: "",
@@ -251,7 +159,6 @@ const handleBorderRadiusChange = (event) => {
   // ========== Refs ==========
   //useRef      = 画面を更新せずに使えるメモ帳
   const canvasRef = useRef(null);
-  // JSONファイルを選択するinputを操作する
   const openFileInputRef = useRef(null);
   const mainRef = useRef(null);
   const historyEndRef = useRef(null);
@@ -272,51 +179,14 @@ const handleBorderRadiusChange = (event) => {
 
   // サーバーから受け取った図形を画面へ反映
    
-  // ========================================
-// サーバーの図形とローカル角丸設定を統合
-// ========================================
-
-useEffect(() => {
-
-  if (interactionRef.current) {
-    return;
-  }
-
-  const mergedShapes = shapes.map((shape) => {
-
-    // この図形に保存された角丸設定を取得
-    const savedRadius = localBorderRadii[shape.id];
-
-    // 四角形以外はそのまま
-    if (
-      shape.type !== "rect" &&
-      shape.type !== "rounded"
-    ) {
-      return shape;
+  useEffect(() => {
+    if (interactionRef.current) {
+      return;
     }
 
-    // 角丸設定が存在しない場合もそのまま
-    if (
-      !Number.isInteger(savedRadius) ||
-      savedRadius < 0 ||
-      savedRadius > 100
-    ) {
-      return shape;
-    }
-
-    // ローカルの角丸設定を上書き
-    return {
-      ...shape,
-      borderRadius: savedRadius,
-    };
-
-  });
-
-  setViewShapes(mergedShapes);
-
-  viewShapesRef.current = mergedShapes;
-
-}, [shapes, localBorderRadii]);
+    setViewShapes(shapes);
+    viewShapesRef.current = shapes;
+  }, [shapes]);
 
   // 履歴の追加方向に応じてスクロール位置を保持する
   useLayoutEffect(() => {
@@ -891,71 +761,6 @@ useEffect(() => {
     [selectedId, updateShapeLocal, updateRect]
   );
 
-  // ========================================
-// 角丸のリアルタイム変更
-// ========================================
-
-// ========================================
-// 角丸を変更（ローカル保存版）
-// ========================================
-
-const handleBorderRadiusChange = useCallback(
-  (event) => {
-
-    if (!selectedId) return;
-
-    const value = Number(event.target.value);
-
-    if (!Number.isFinite(value)) return;
-
-    // 0〜100pxに制限
-    const radius = Math.max(
-      0,
-      Math.min(
-        MAX_BORDER_RADIUS,
-        Math.round(value)
-      )
-    );
-
-    // ローカルの設定を更新
-    setLocalBorderRadii((prev) => ({
-      ...prev,
-      [selectedId]: radius,
-    }));
-
-    // 画面上の図形もすぐ更新
-    updateShapeLocal(
-      selectedId,
-      { borderRadius: radius },
-      setViewShapes,
-      viewShapesRef
-    );
-
-  },
-  [selectedId, updateShapeLocal]
-);
-
-
-
-
-// ========================================
-// 角丸設定をブラウザに保存
-// ========================================
-
-useEffect(() => {
-
-  try {
-    localStorage.setItem(
-      BORDER_RADIUS_STORAGE_KEY,
-      JSON.stringify(localBorderRadii)
-    );
-
-  } catch (error) {
-    console.error("角丸設定の保存失敗:", error);
-  }
-
-}, [localBorderRadii]);
-
   // 図形の重なり順移動
    
   const moveSelectedLayer = useCallback(
@@ -1023,247 +828,70 @@ useEffect(() => {
     handleSaveJsonFile(viewShapes, fileName);
   }, [viewShapes, fileName, handleSaveJsonFile]);
 
-  // ========================================
-// PNG画像出力機能
-// ========================================
+  // ユーザーごとの角丸変更（Socket.IO / PostgreSQL には送信しない）
+  const handleBorderRadiusChange = useCallback((event) => {
+    if (!selectedId) return;
+    const number = Number(event.target.value);
+    if (!Number.isFinite(number)) return;
+    const radius = Math.max(0, Math.min(MAX_BORDER_RADIUS, Math.round(number)));
+    setLocalBorderRadii((previous) => ({ ...previous, [String(selectedId)]: radius }));
+  }, [selectedId]);
 
-const handleClickExportPng = useCallback(async () => {
-
-  // 現在のキャンバスを取得
-  const canvas = canvasRef.current;
-
-  if (!canvas || pngExporting) {
-    return;
-  }
-
-  // テキスト編集中は出力しない
-  if (editingId !== null) {
-    window.alert(
-      "テキストの編集を確定してからPNG出力してください。"
-    );
-    return;
-  }
-
-  // ドラッグ・回転・リサイズ中は出力しない
-  if (interactionRef.current) {
-    window.alert(
-      "図形の操作が終わってからPNG出力してください。"
-    );
-    return;
-  }
-
-  // 出力開始
-  setPngExporting(true);
-
-  // 編集用の選択枠を一時的に非表示
-  canvas.classList.add("png-exporting");
-
-  try {
-
-    // フォントの読み込みを待つ
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
-
-    // キャンバス全体をPNGに変換
-    const blob = await toBlob(canvas, {
-
-      // PNGの背景色
-      backgroundColor: "#ffffff",
-
-      // キャンバス全体のサイズ
-      width: Math.ceil(canvasWidth),
-      height: Math.ceil(canvasHeight),
-
-      // 表示倍率に関係なく元の解像度で保存
-      pixelRatio: 1,
-
-      // 画面上の縮小・拡大を解除して画像化
-      style: {
-        transform: "none",
-        transformOrigin: "top left",
-        border: "none",
-      },
-
-      // 編集用の部品はPNGに含めない
-      filter: (element) => {
-
-        if (!element.classList) {
-          return true;
-        }
-
-        const excludedClasses = [
-          "smart-guide",
-          "resize-handle",
-          "rotate-handle",
-          "shape-measurement",
-        ];
-
-        return !excludedClasses.some(
-          (className) =>
-            element.classList.contains(className)
-        );
-      },
-    });
-
-    // 画像生成失敗
-    if (!blob) {
-      throw new Error("PNG画像を生成できませんでした。");
-    }
-
-    // ファイル名を取得
-    const safeFileName = (
-      fileName.trim() || "pikva-canvas"
-    )
-      .replace(/[\\/:*?"<>|]/g, "_")
-      .replace(/\.+$/, "")
-      .slice(0, 100) || "pikva-canvas";
-
-    // PNG画像のダウンロードURLを作成
-    const downloadUrl = URL.createObjectURL(blob);
-
-    // ダウンロード用のリンク
-    const link = document.createElement("a");
-
-    link.href = downloadUrl;
-    link.download = `${safeFileName}.png`;
-
-    document.body.appendChild(link);
-
-    // ダウンロード実行
-    link.click();
-
-    // リンク削除
-    link.remove();
-
-    // ダウンロード開始後にURLを解放
-    setTimeout(() => {
-      URL.revokeObjectURL(downloadUrl);
-    }, 30000);
-
-    console.log("PNG出力成功:", link.download);
-
-  } catch (error) {
-
-    console.error("PNG出力エラー:", error);
-
-    window.alert(
-      "PNG画像の出力に失敗しました。\n" +
-      (error?.message || "不明なエラー")
-    );
-
-  } finally {
-
-    // 編集用の選択枠を元に戻す
-    canvas.classList.remove("png-exporting");
-
-    // 出力終了
-    setPngExporting(false);
-  }
-
-}, [
-  canvasWidth,
-  canvasHeight,
-  fileName,
-  editingId,
-  pngExporting,
-]);
-
-  // ========================================
-// JSONファイル読み込み機能
-// ========================================
-
-// 「開く」ボタンを押したとき
-const handleClickOpenFile = () => {
-  openFileInputRef.current?.click();
-};
-
-// JSONファイルを選択したとき
-const handleOpenFileChange = async (event) => {
-  const file = event.target.files?.[0];
-
-  // 同じファイルを再選択できるようにする
-  event.target.value = "";
-
-  if (!file) {
-    return;
-  }
-
-  // ファイルサイズ制限（5MB）
-  if (file.size > 5 * 1024 * 1024) {
-    window.alert("ファイルサイズが大きすぎます。");
-    return;
-  }
-
-  try {
-    // ファイルを文字列として読み込む
-    const text = await file.text();
-
-    // JSONをJavaScriptオブジェクトに変換
-    const data = JSON.parse(text);
-
-    // 保存形式を確認
-    if (
-      !data ||
-      data.version !== 1 ||
-      !Array.isArray(data.objects)
-    ) {
-      throw new Error(
-        "Pikvaで保存したJSONファイルではありません。"
-      );
-    }
-
-    // 図形の数を確認
-    if (data.objects.length > 200) {
-      throw new Error(
-        "一度に読み込める図形は200個までです。"
-      );
-    }
-
-    // 現在のキャンバスを上書きしてよいか確認
-    const confirmed = window.confirm(
-      "現在の共通キャンバスを読み込んだ内容で置き換えます。\n" +
-      "この変更は他の参加者にも反映されます。\n\n" +
-      "事前に保存しましたか？\n\n" +
-      "読み込みを続行しますか？"
-    );
-
-    if (!confirmed) {
+  // ローカルJSONを開き、既存サーバーの canvas:import を利用
+  const handleOpenFileChange = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // 同じファイルを再選択できるようにする
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert("5MBを超えるJSONファイルは読み込めません。");
       return;
     }
+    try {
+      const data = JSON.parse(await file.text());
+      if (data?.version !== 1 || !Array.isArray(data.objects)) {
+        throw new Error("PikvaのJSON形式ではありません。");
+      }
+      if (data.objects.length > 200) throw new Error("図形は200個までです。");
+      if (typeof importCanvas !== "function") {
+        throw new Error("読み込み用の通信機能が見つかりません。");
+      }
+      if (!window.confirm("現在の共有キャンバスを置き換えます。全員の画面に反映されます。先に保存しましたか？")) return;
+      const result = await importCanvas(data.objects);
+      const nextName = typeof data.fileName === "string" && data.fileName.trim()
+        ? data.fileName.trim() : file.name.replace(/\.json$/i, "");
+      setFileName(nextName);
+      clearSelectionState({ setSelectedId, setEditingId, setInteraction });
+      window.alert(`${result?.count ?? data.objects.length}個の図形を読み込みました。`);
+    } catch (error) {
+      console.error("JSON読み込み失敗:", error);
+      window.alert(`ファイルを開けませんでした。\n${error.message}`);
+    }
+  }, [importCanvas, clearSelectionState]);
 
-    // Socket.IO経由でサーバーへ送信
-    const result = await importCanvas(data.objects);
-
-    // ファイル名を変更
-    const loadedName =
-      typeof data.fileName === "string" &&
-      data.fileName.trim()
-        ? data.fileName
-        : file.name.replace(/\.json$/i, "");
-
-    setFileName(loadedName);
-
-    // 選択状態を解除
-    clearSelectionState({
-      setSelectedId,
-      setEditingId,
-      setInteraction,
-    });
-
-    window.alert(
-      `${result.count}個の図形を読み込みました！`
-    );
-
-  } catch (error) {
-    console.error("JSON読み込みエラー:", error);
-
-    window.alert(
-      "ファイルを開けませんでした。\n" +
-      error.message
-    );
-  }
-};
+  // 依存ライブラリの追加を必要としないPNG出力。
+  // 角丸ローカル設定もこのブラウザの画像には反映される。
+  const handleClickExportPng = useCallback(async () => {
+    if (pngExporting) return;
+    if (editingId != null || interactionRef.current) {
+      window.alert("文字編集やドラッグを終えてからPNG出力してください。");
+      return;
+    }
+    setPngExporting(true);
+    try {
+      await exportCanvasPng({
+        shapes: viewShapes,
+        canvasWidth,
+        canvasHeight,
+        fileName,
+        localBorderRadii,
+      });
+    } catch (error) {
+      console.error("PNG出力失敗:", error);
+      window.alert(`PNG出力に失敗しました。\n${error.message}`);
+    } finally {
+      setPngExporting(false);
+    }
+  }, [pngExporting, editingId, viewShapes, canvasWidth, canvasHeight, fileName, localBorderRadii]);
 
   //履歴の図形名を日本語へ変換
    
@@ -1312,27 +940,16 @@ const handleOpenFileChange = async (event) => {
           保存
         </button>
 
-        {/* JSONファイルを選択する隠しinput */}
         <input
+          ref={openFileInputRef}
           type="file"
           accept=".json,application/json"
-          ref={openFileInputRef}
           onChange={handleOpenFileChange}
           style={{ display: "none" }}
-          />
+        />
+        <button type="button" onClick={() => openFileInputRef.current?.click()}>開く</button>
 
-          {/* ファイルを開くボタン */}
-        <button type="button" onClick={handleClickOpenFile}>
-          開く
-        </button>
-        
-
-        {/* PNG画像出力ボタン */}
-        <button
-          type="button"
-          onClick={handleClickExportPng}
-          disabled={pngExporting}
-        >
+        <button type="button" onClick={handleClickExportPng} disabled={pngExporting}>
           {pngExporting ? "PNG作成中..." : "PNG出力"}
         </button>
 
@@ -1439,23 +1056,17 @@ const handleOpenFileChange = async (event) => {
               三角形を追加
             </button>
 
-
-{[
-  ["diamond", "ひし形を追加"],
-  ["pentagon", "五角形を追加"],
-  ["hexagon", "六角形を追加"],
-  ["star", "星形を追加"],
-  ["arrow", "矢印を追加"],
-].map(([type, label]) => (
-  <button
-    key={type}
-    type="button"
-    onClick={() => handleAddShape(type)}
-  >
-    {label}
-  </button>
-))}
-
+            {[
+              ["diamond", "◆ ひし形"],
+              ["pentagon", "⬟ 五角形"],
+              ["hexagon", "⬢ 六角形"],
+              ["star", "★ 星形"],
+              ["arrow", "➜ 矢印"],
+            ].map(([type, label]) => (
+              <button type="button" key={type} onClick={() => handleAddShape(type)}>
+                {label}
+              </button>
+            ))}
             <button
               type="button"
               onClick={() =>
@@ -1495,6 +1106,13 @@ const handleOpenFileChange = async (event) => {
                     viewShapesRef
                   );
                 }}
+                onPointerUp={
+                  // マウス・指を離したときにサーバーへ正式保存します。
+                  saveSelectedRotation
+                }
+                onBlur={
+                  saveSelectedRotation
+                }
               />
 
               <span>
@@ -1543,51 +1161,30 @@ const handleOpenFileChange = async (event) => {
                 handleColorChange
               }
             />
-
-
-{selectedShape &&
-  ["rect", "rounded"].includes(selectedShape.type) && (
-
-  <div className="border-radius-tool">
-
-    <label htmlFor="border-radius-slider">
-      角丸
-    </label>
-
-    <input
-  id="border-radius-slider"
-  type="range"
-  min="0"
-  max="100"
-  step="1"
-
-  value={getBorderRadius(selectedShape)}
-
-  onChange={handleBorderRadiusChange}
-/>
-
-    <div className="border-radius-value">
-
-  <input
-  type="number"
-  min="0"
-  max="100"
-  step="1"
-
-  aria-label="角丸の大きさ"
-
-  value={getBorderRadius(selectedShape)}
-
-  onChange={handleBorderRadiusChange}
-/>
-
-      <span>px</span>
-
-    </div>
-
-  </div>
-)}
           </label>
+
+          {selectedShape && ["rect", "rounded"].includes(selectedShape.type) && (
+            <div className="pikva-local-radius">
+              <label htmlFor="pikva-radius-slider">角丸（このブラウザだけ）</label>
+              <input
+                id="pikva-radius-slider"
+                type="range"
+                min="0" max="100" step="1"
+                value={radiusForShape(selectedShape, localBorderRadii)}
+                onChange={handleBorderRadiusChange}
+              />
+              <div className="pikva-local-radius__value">
+                <input
+                  type="number"
+                  min="0" max="100" step="1"
+                  aria-label="角丸の大きさ"
+                  value={radiusForShape(selectedShape, localBorderRadii)}
+                  onChange={handleBorderRadiusChange}
+                />
+                <span>px</span>
+              </div>
+            </div>
+          )}
 
           {/* 選択中図形がテキストの場合だけ、
               文字サイズ・太字・斜体・大文字ボタンを表示します。 */}
@@ -1837,10 +1434,9 @@ const handleOpenFileChange = async (event) => {
                         ? shape.fill
                         : undefined,
 
-                        // 四角形の角丸を反映
-                        borderRadius:
-                        ["rect", "rounded"].includes(shapeType)
-                        ? `${getBorderRadius(shape)}px`
+                      // サーバーから来る図形には角丸を付加せず、描画時にだけ反映
+                      borderRadius: ["rect", "rounded"].includes(shapeType)
+                        ? `${radiusForShape(shape, localBorderRadii)}px`
                         : undefined,
 
                       fontSize: isText
@@ -2034,9 +1630,7 @@ const handleOpenFileChange = async (event) => {
               AIアシスタント
             </button>
           </div>
-          {sidebarTab === "history" && (
-            <HistoryComments userName={userName} />
-            )}
+          {sidebarTab === "history" && <HistoryComments userName={userName} />}
           {sidebarTab === "ai" ? (
             <AiChatPanel {...aiChat} shapes={shapes} />
           ) : (
@@ -2135,8 +1729,7 @@ const handleOpenFileChange = async (event) => {
             />
           </ul>
           </div>
-          )
-          }
+          )}
           {/* ここまでが履歴タブの中身 */}
         </section>
       </div>

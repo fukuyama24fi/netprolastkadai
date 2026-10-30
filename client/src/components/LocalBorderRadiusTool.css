@@ -1,0 +1,23 @@
+/* サーバーのDBを変更せずに角丸を編集するためのローカル専用ツール。 */
+.pikva-local-radius {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  color: white;
+  background: #333;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.pikva-local-radius input[type="range"] { width: 100%; cursor: pointer; }
+.pikva-local-radius__value { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.pikva-local-radius__value input[type="number"] {
+  width: 65px;
+  padding: 5px;
+  color: #222;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  text-align: right;
+}
+/* 古い固定角丸図形はJSXのinline styleで角丸を上書きできる。 */
